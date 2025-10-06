@@ -46,18 +46,9 @@ alllbe-proto/
 ```
 backend/
 ├── src/
-│   ├── trpc/          # tRPC HTTPサーバー（CRUD処理）
-│   │   └── index.ts   # tRPCエントリーポイント
-│   ├── temporal/      # Temporal ワークフロー（非同期処理）
-│   │   └── index.ts   # Temporalエントリーポイント
-│   └── shared/        # tRPCとTemporalで共有するコード
-│       ├── domain/    # ビジネスロジック
-│       ├── db/        # DB操作関数
-│       │   ├── connection.ts  # Neon DB接続設定
-│       │   ├── migrate.ts     # マイグレーション実行
-│       │   ├── schema.ts      # Drizzleスキーマ定義
-│       │   └── models/        # データモデル
-│       └── trpc/      # tRPCルーター・ハンドラ
+│   ├── activities/
+│   ├── workflows/
+│   ├── trpc/
 ├── drizzle.config.ts  # Drizzle Kit設定
 ├── package.json
 └── tsconfig.json
@@ -464,3 +455,57 @@ export const createOrganization = (
 - [ ] コード例を最新の構造に合わせて更新
 - [ ] 新機能のビジネスルールを要件書に反映
 - [ ] 必要に応じて全体の copilot-instructions.md も更新
+
+## README.md 管理方針
+
+### 基本原則
+
+**README.mdは最小限の情報のみを記載し、詳細は `.github/instructions/` を参照する**
+
+### README.mdに記載すべき内容
+
+- **プロジェクト概要**: 1-2行の簡潔な説明
+- **アーキテクチャ図**: 簡潔な構成図（詳細は instructions へのリンク）
+- **ディレクトリ構造**: 主要なディレクトリのみ（1階層まで）
+- **開発コマンド**: `npm install`, `npm run dev` などの基本コマンド
+- **参考資料へのリンク**: `.github/instructions/` への参照
+
+### README.mdに記載すべきでない内容
+
+❌ **詳細な設計方針** → `.github/instructions/architecture.instructions.md`
+❌ **実装パターン** → `.github/instructions/backend.instructions.md`, etc.
+❌ **コーディング規約** → `.github/instructions/` の各ファイル
+❌ **長いコード例** → instructions ファイルに記載
+❌ **技術スタックの詳細説明** → instructions ファイルに記載
+
+### 更新時の注意
+
+- README.mdを更新する際は、**必ず冗長性をチェック**
+- 詳細な説明は instructions ファイルに移動
+- README.mdは「クイックスタートガイド」として機能させる
+- 新機能追加時は README.md を肥大化させない
+
+### 例: 良いREADME.md
+
+```markdown
+# Backend
+
+体験イベント予約管理システムのバックエンド
+
+## アーキテクチャ
+
+[簡潔な図]
+
+**詳細**: `.github/instructions/architecture.instructions.md` を参照
+
+## 開発
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+## 参考資料
+
+- [設計方針](.github/instructions/)
+```

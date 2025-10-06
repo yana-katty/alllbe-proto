@@ -1,15 +1,27 @@
-// tRPC エントリーポイント用のロガー初期化
+/**
+ * tRPC エントリーポイント用のロガー初期化
+ * 
+ * Winston ベースのロガーを使用し、tRPC ハンドラーでのログ出力を管理します。
+ * Temporal の Activity/Workflow とは独立したロガーインスタンスです。
+ */
 
-import { createLogger } from '@/shared/logger';
+import { createWinstonLogger } from '@/shared/logger';
 import type { Logger } from '@/shared/logger';
 
 /**
  * tRPC サーバー用のロガーを初期化
  * 
- * Winstonベースのロガーを作成し、アプリケーション全体で使用できます。
+ * @returns Winston Logger インスタンス
+ * 
+ * @example
+ * ```typescript
+ * import { trpcLogger } from '@/trpc/logger';
+ * 
+ * trpcLogger.info('Processing request', { userId: '123' });
+ * ```
  */
 export function initializeTrpcLogger(): Logger {
-    const logger = createLogger({
+    const logger = createWinstonLogger({
         isProduction: process.env.NODE_ENV === 'production',
         level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
         logFilePath: process.env.TRPC_LOG_PATH,

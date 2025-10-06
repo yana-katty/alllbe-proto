@@ -11,6 +11,7 @@ export const organizations = pgTable('organizations', {
     phone: varchar('phone', { length: 50 }),
     website: varchar('website', { length: 255 }),
     address: text('address'),
+    workosOrganizationId: varchar('workos_organization_id', { length: 255 }).unique(), // WorkOS Organization ID
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

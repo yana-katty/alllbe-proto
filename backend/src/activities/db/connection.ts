@@ -19,3 +19,6 @@ const sql = neon(process.env.DATABASE_URL);
 export const db = drizzle(sql, { schema });
 
 export type Database = typeof db;
+
+// Database instance getter for Activities
+export const getDatabase = () => db;

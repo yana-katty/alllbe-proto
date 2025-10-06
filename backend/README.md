@@ -2,43 +2,63 @@
 
 体験イベント予約管理システムのバックエンド
 
-## 構成
+## アーキテクチャ
 
-- **tRPC**: 単純なCRUD処理用のHTTPサーバー
-- **Temporal**: 非同期処理・ワークフロー管理
+```
+Client (Frontend) 
+    ↓ tRPC
+Backend (tRPC Handlers)
+    ↓ Temporal Client
+Temporal Workflows
+    ↓ proxyActivities
+Temporal Activities
+    ↓ Database/External APIs
+```
+
+**詳細な設計方針**: `.github/instructions/architecture.instructions.md` を参照
 
 ## ディレクトリ構造
 
 ```
-backend/
-├── src/
-│   ├── trpc/          # tRPCエントリーポイントとルーター
-│   │   ├── index.ts   # tRPCサーバーエントリーポイント
-│   │   └── logger.ts  # tRPC用ロガー初期化
-│   ├── temporal/      # Temporalワークフロー・アクティビティ
-│   │   ├── index.ts   # Temporalワーカーエントリーポイント
-│   │   └── logger.ts  # Temporal用ロガー初期化
-│   └── shared/        # tRPCとTemporalで共有するコード
-│       ├── domain/    # ビジネスロジック
-│       ├── db/        # データベース操作
-│       │   ├── connection.ts  # Neon DB接続設定
-│       │   ├── migrate.ts     # マイグレーション実行
-│       │   ├── schema.ts      # Drizzleスキーマ定義
-│       │   └── models/        # データモデル
-│       └── logger/    # 共通ロガー（依存注入可能）
-│           ├── types.ts     # Loggerインターフェース
-│           ├── winston.ts   # Winston実装
-│           ├── temporal.ts  # Temporalアダプター
-│           ├── examples.ts  # 使用例
-│           └── README.md    # ロガー使用ガイド
-├── drizzle.config.ts  # Drizzle Kit設定
-├── package.json
-└── tsconfig.json
+backend/src/
+├── activities/
+│   ├── index.ts              # Activity exports
+│   ├── db/
+│   │   ├── models/
+│   │   │   └── organization.ts  # Organization Activity implementations
+│   │   ├── connection.ts     # Neon DB接続設定
+│   │   ├── schema.ts         # Drizzleスキーマ定義
+│   │   └── migrate.ts        # マイグレーション実行
+│   └── auth/                 # Auth Activity implementations
+├── workflows/
+│   ├── index.ts              # Workflow exports
+│   ├── organization.ts       # Organization Workflows (CUD + Read)
+│   └── *.ts                  # Other workflows
+└── trpc/
+    ├── base.ts               # tRPC設定・ミドルウェア
+    ├── index.ts              # ルーターの統合
+    ├── organization.ts       # Organization tRPC routes
+    └── *.ts                  # Other routes
 ```
+
+## 主要な設計原則
+
+1. **Activity層**: Neverthrow使用、Errorをthrowしない
+2. **Workflow層**: Errorをthrow可能（Temporal標準）
+3. **tRPC層**: Read操作は通常関数、CUD操作はWorkflow Client経由
+4. **重複制御**: Workflow Id Reuse Policy: Duplicate で client側管理
+
+**詳細**: `.github/instructions/` 配下の各instructionsファイルを参照
 
 ## 開発
 
 ```bash
+# 依存関係のインストール
+npm install
+
+# DBマイグレーション
+npm run db:migrate
+
 # tRPCサーバーの起動
 npm run dev:trpc
 
@@ -46,40 +66,8 @@ npm run dev:trpc
 npm run dev:temporal
 ```
 
-## ロガー
+## 参考資料
 
-backendでは依存注入可能な共通ロガーインターフェースを提供しています。
-tRPC と Temporal の両方で同じコードを使用できます。
-
-### 主な特徴
-
-- **共通インターフェース**: `Logger` 型で統一
-- **Winston実装**: tRPC用の実装
-- **Temporalアダプター**: `@temporalio/activity`, `@temporalio/workflow` の log を共通インターフェースに変換
-- **依存注入**: domain層やdb層の関数にloggerを渡すことで、tRPC/Temporal両方で動作
-
-詳細は [src/shared/logger/README.md](./src/shared/logger/README.md) を参照してください。
-
-### 使用例
-
-```typescript
-// 共有コード（domain層）
-import type { Logger } from '@/shared/logger';
-
-export const createOrganization = (
-  deps: Pick<Deps, 'logger' | 'insertOrganization'>
-) => async (input) => {
-  deps.logger.info('Creating organization', { email: input.email });
-  // ...
-};
-
-// tRPC
-import { trpcLogger } from '@/trpc/logger';
-const result = await createOrganization({ logger: trpcLogger, ... })(input);
-
-// Temporal Activity
-import { log } from '@temporalio/activity';
-import { createTemporalLogger } from '@/shared/logger';
-const logger = createTemporalLogger(log);
-const result = await createOrganization({ logger, ... })(input);
-```
+- [Temporal TypeScript Samples](https://github.com/temporalio/samples-typescript/tree/main)
+- [SAGA Pattern Example](https://github.com/temporalio/samples-typescript/tree/main/saga)
+- [Neverthrow Documentation](https://github.com/supermacro/neverthrow)

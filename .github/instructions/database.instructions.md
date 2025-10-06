@@ -1,5 +1,5 @@
 ---
-applyTo: "backend/src/shared/db/**"
+applyTo: "backend/src/workflows/db/**"
 ---
 
 # データベース設計ガイドライン
