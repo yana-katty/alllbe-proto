@@ -1,0 +1,22 @@
+{
+    "name": "alllbe-backend",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev:trpc": "tsx watch src/trpc/index.ts",
+        "dev:temporal": "tsx watch src/temporal/index.ts",
+        "build": "tsc",
+        "test": "vitest"
+    },
+    "dependencies": {
+        "@temporalio/activity": "^1.13.0",
+        "@temporalio/worker": "^1.13.0",
+        "@temporalio/workflow": "^1.13.0",
+        "neverthrow": "^8.2.0",
+        "winston": "^3.18.3"
+    },
+    "devDependencies": {
+        "@types/node": "^24.7.0"
+    }
+}
