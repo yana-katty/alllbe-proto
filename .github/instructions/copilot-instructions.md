@@ -12,6 +12,7 @@ applyTo: "**"
   - **Backend**: TypeScript, Hono, tRPC, Temporal, Drizzle ORM, Neon Database, neverthrow, vitest
   - **Frontend**: Next.js 14, React 18, TypeScript, tRPC Client
   - **Enterprise**: WorkOS (SSO, Organization 管理, Enterprise Ready 機能)
+  - **Authentication**: Auth0 (エンドユーザー認証, ソーシャルログイン)
   - **Shared**: TypeScript型定義の共有
 
 ## モノレポ構成
