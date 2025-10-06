@@ -208,8 +208,8 @@ export async function inviteOrganizationUserWorkflow(
 ### Enterprise Organization 対応
 
 1. **Organization 作成時にプラン判定**:
-   - Enterprise → Workspace なし（Organization = Workspace）
-   - Standard → デフォルトWorkspace作成
+   - Enterprise → 親 Enterprise workspace に紐づく
+   - Standard  → 紐づかないかつ 1 つの Organization のみの所属制限
 
 2. **SSO・ドメイン制限の実装**:
    - WorkOS SSO Connection の設定
@@ -220,23 +220,22 @@ export async function inviteOrganizationUserWorkflow(
    - 月間予約数制限
    - API アクセス制御
 
-### Multiple Workspace 拡張
+### Multiple Organization 拡張
 
-1. **Workspace 管理UI**:
-   - Organization 管理者が Workspace を作成・編集・削除
-   - ユーザーの Workspace 間移動
+1. **Organization 管理UI**:
+   - Enterprise workspace 管理者が Organization を作成・編集・削除
 
-2. **Workspace 単位の権限管理**:
-   - Workspace Admin / Member の役割
+2. **Organization 単位の権限管理**:
+   - Organization Admin / Member の役割
    - Experience アクセス制御
 
-3. **Workspace 統計・分析**:
-   - Workspace 単位の売上・予約レポート
-   - クロスWorkspace 分析
+3. **Organization 統計・分析**:
+   - Organization 単位の売上・予約レポート
+   - クロス Organization 分析
 
 ## まとめ
 
-- **MVP (Phase 1)**: Multiple Workspace のみ実装（Standard Organization）
-- **Future (Phase 2)**: Single Workspace 追加（Enterprise Organization）
+- **MVP (Phase 1)**: Standard Organization のみ実装
+- **MVP (Phase 2)**: Enterprise Organization の実装
 - **Activity 設計**: プリミティブな操作のみ、複雑な処理は Workflow で調整
 - **データ分離**: DB は参照情報のみ、個人情報・Enterprise 設定は WorkOS で管理
