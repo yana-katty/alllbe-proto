@@ -165,198 +165,176 @@ export const removePayment = (db: Database): RemovePayment =>
 
 /**
  * Payment作成Activity
- * @param data 作成データ
- * @returns 作成されたPayment、またはエラー
+ * 
+ * @param insert - insertPayment関数（依存注入）
+ * @returns Activity関数
  */
-export async function createPaymentActivity(
-    data: PaymentCreateInput
-): Promise<{ ok: true; value: Payment } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await insertPayment(db)(data);
+export const createPaymentActivity = (insert: InsertPayment) =>
+    async (data: PaymentCreateInput): Promise<{ ok: true; value: Payment } | { ok: false; error: PaymentError }> => {
+        const result = await insert(data);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * Payment取得Activity (ID指定)
- * @param id Payment ID
- * @returns 取得されたPayment、またはエラー
+ * 
+ * @param findById - findPaymentById関数（依存注入）
+ * @returns Activity関数
  */
-export async function getPaymentByIdActivity(
-    id: string
-): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findPaymentById(db)(id);
+export const getPaymentByIdActivity = (findById: FindPaymentById) =>
+    async (id: string): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> => {
+        const result = await findById(id);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * Payment取得Activity (Booking ID指定)
- * @param bookingId Booking ID
- * @returns 取得されたPayment、またはエラー
+ * 
+ * @param findByBookingId - findPaymentByBookingId関数（依存注入）
+ * @returns Activity関数
  */
-export async function getPaymentByBookingIdActivity(
-    bookingId: string
-): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findPaymentByBookingId(db)(bookingId);
+export const getPaymentByBookingIdActivity = (findByBookingId: FindPaymentByBookingId) =>
+    async (bookingId: string): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> => {
+        const result = await findByBookingId(bookingId);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * Payment一覧取得Activity
- * @param params クエリパラメータ
- * @returns Payment配列、またはエラー
+ * 
+ * @param list - listPayments関数（依存注入）
+ * @returns Activity関数
  */
-export async function listPaymentsActivity(
-    params: PaymentQueryInput
-): Promise<{ ok: true; value: Payment[] } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listPayments(db)(params);
+export const listPaymentsActivity = (list: ListPayments) =>
+    async (params: PaymentQueryInput): Promise<{ ok: true; value: Payment[] } | { ok: false; error: PaymentError }> => {
+        const result = await list(params);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * Payment更新Activity
- * @param id Payment ID
- * @param patch 更新データ
- * @returns 更新されたPayment、またはエラー
+ * 
+ * @param update - updatePayment関数（依存注入）
+ * @returns Activity関数
  */
-export async function updatePaymentActivity(
-    id: string,
-    patch: PaymentUpdateInput
-): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await updatePayment(db)(id, patch);
+export const updatePaymentActivity = (update: UpdatePayment) =>
+    async (id: string, patch: PaymentUpdateInput): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> => {
+        const result = await update(id, patch);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * Payment削除Activity
- * @param id Payment ID
- * @returns 削除成功フラグ、またはエラー
+ * 
+ * @param remove - removePayment関数（依存注入）
+ * @returns Activity関数
  */
-export async function deletePaymentActivity(
-    id: string
-): Promise<{ ok: true; value: boolean } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await removePayment(db)(id);
+export const deletePaymentActivity = (remove: RemovePayment) =>
+    async (id: string): Promise<{ ok: true; value: boolean } | { ok: false; error: PaymentError }> => {
+        const result = await remove(id);
 
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
+        if (result.isErr()) {
+            return { ok: false, error: result.error };
+        }
+        return { ok: true, value: result.value };
+    };
 
 /**
  * 決済完了Activity（現地払い・クレカ払い共通）
- * @param bookingId Booking ID
- * @param paymentIntentId 外部決済ID（Stripe Payment Intent IDなど）
- * @returns 更新されたPayment、またはエラー
+ * 
+ * @param findByBookingId - findPaymentByBookingId関数（依存注入）
+ * @param update - updatePayment関数（依存注入）
+ * @returns Activity関数
  */
-export async function completePaymentActivity(
-    bookingId: string,
-    paymentIntentId?: string
-): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
+export const completePaymentActivity = (findByBookingId: FindPaymentByBookingId, update: UpdatePayment) =>
+    async (bookingId: string, paymentIntentId?: string): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> => {
+        // Booking に紐づく Payment を取得
+        const findResult = await findByBookingId(bookingId);
+        if (findResult.isErr()) {
+            return { ok: false, error: findResult.error };
+        }
 
-    // Booking に紐づく Payment を取得
-    const findResult = await findPaymentByBookingId(db)(bookingId);
-    if (findResult.isErr()) {
-        return { ok: false, error: findResult.error };
-    }
+        if (!findResult.value) {
+            return { ok: false, error: { code: PaymentErrorCode.NOT_FOUND, message: 'Payment not found for booking' } };
+        }
 
-    if (!findResult.value) {
-        return { ok: false, error: { code: PaymentErrorCode.NOT_FOUND, message: 'Payment not found for booking' } };
-    }
+        const payment = findResult.value;
 
-    const payment = findResult.value;
+        // すでに完了している場合はエラー
+        if (payment.status === 'completed') {
+            return { ok: false, error: { code: PaymentErrorCode.ALREADY_EXISTS, message: 'Payment already completed' } };
+        }
 
-    // すでに完了している場合はエラー
-    if (payment.status === 'completed') {
-        return { ok: false, error: { code: PaymentErrorCode.ALREADY_EXISTS, message: 'Payment already completed' } };
-    }
+        // 決済完了に更新
+        const updateResult = await update(payment.id, {
+            status: 'completed',
+            paidAt: new Date(),
+            paymentIntentId: paymentIntentId ?? payment.paymentIntentId ?? undefined,
+        });
 
-    // 決済完了に更新
-    const updateResult = await updatePayment(db)(payment.id, {
-        status: 'completed',
-        paidAt: new Date(),
-        paymentIntentId: paymentIntentId ?? payment.paymentIntentId ?? undefined,
-    });
+        if (updateResult.isErr()) {
+            return { ok: false, error: updateResult.error };
+        }
 
-    if (updateResult.isErr()) {
-        return { ok: false, error: updateResult.error };
-    }
-
-    return { ok: true, value: updateResult.value };
-}
+        return { ok: true, value: updateResult.value };
+    };
 
 /**
  * 返金処理Activity
- * @param bookingId Booking ID
- * @param refundId 外部返金ID（Stripe Refund IDなど）
- * @returns 更新されたPayment、またはエラー
+ * 
+ * @param findByBookingId - findPaymentByBookingId関数（依存注入）
+ * @param update - updatePayment関数（依存注入）
+ * @returns Activity関数
  */
-export async function refundPaymentActivity(
-    bookingId: string,
-    refundId?: string
-): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
+export const refundPaymentActivity = (findByBookingId: FindPaymentByBookingId, update: UpdatePayment) =>
+    async (bookingId: string, refundId?: string): Promise<{ ok: true; value: Payment | null } | { ok: false; error: PaymentError }> => {
+        // Booking に紐づく Payment を取得
+        const findResult = await findByBookingId(bookingId);
+        if (findResult.isErr()) {
+            return { ok: false, error: findResult.error };
+        }
 
-    // Booking に紐づく Payment を取得
-    const findResult = await findPaymentByBookingId(db)(bookingId);
-    if (findResult.isErr()) {
-        return { ok: false, error: findResult.error };
-    }
+        if (!findResult.value) {
+            return { ok: false, error: { code: PaymentErrorCode.NOT_FOUND, message: 'Payment not found for booking' } };
+        }
 
-    if (!findResult.value) {
-        return { ok: false, error: { code: PaymentErrorCode.NOT_FOUND, message: 'Payment not found for booking' } };
-    }
+        const payment = findResult.value;
 
-    const payment = findResult.value;
+        // 完了していない決済は返金できない
+        if (payment.status !== 'completed') {
+            return { ok: false, error: { code: PaymentErrorCode.INVALID, message: 'Can only refund completed payments' } };
+        }
 
-    // 完了していない決済は返金できない
-    if (payment.status !== 'completed') {
-        return { ok: false, error: { code: PaymentErrorCode.INVALID, message: 'Can only refund completed payments' } };
-    }
+        // 返金処理
+        const updateResult = await update(payment.id, {
+            status: 'refunded',
+            refundedAt: new Date(),
+            refundId: refundId ?? payment.refundId ?? undefined,
+        });
 
-    // 返金処理
-    const updateResult = await updatePayment(db)(payment.id, {
-        status: 'refunded',
-        refundedAt: new Date(),
-        refundId: refundId ?? payment.refundId ?? undefined,
-    });
+        if (updateResult.isErr()) {
+            return { ok: false, error: updateResult.error };
+        }
 
-    if (updateResult.isErr()) {
-        return { ok: false, error: updateResult.error };
-    }
-
-    return { ok: true, value: updateResult.value };
-}
+        return { ok: true, value: updateResult.value };
+    };

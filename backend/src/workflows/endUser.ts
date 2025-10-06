@@ -12,7 +12,6 @@
 
 import { proxyActivities, log, ActivityFailure, ApplicationFailure } from '@temporalio/workflow';
 import type { Auth0UserCreateInput, Auth0UserUpdateInput, Auth0UserProfile } from '../activities/auth/auth0/types';
-import type * as activities from '../activities';
 
 /**
  * Workflow Input/Output Types
@@ -51,7 +50,19 @@ const {
     findDbUserByEmailActivity,
     restoreDbUserActivity,
     reactivateAuth0UserActivity,
-} = proxyActivities<typeof activities>({
+} = proxyActivities<{
+    getAuth0UserActivity: (userId: string) => Promise<Auth0UserProfile>;
+    createAuth0UserActivity: (input: Auth0UserCreateInput) => Promise<Auth0UserProfile>;
+    updateAuth0UserActivity: (userId: string, updates: Auth0UserUpdateInput) => Promise<Auth0UserProfile>;
+    deleteAuth0UserActivity: (userId: string) => Promise<void>;
+    getDbUserActivity: (auth0UserId: string) => Promise<any>;
+    createDbUserActivity: (input: any) => Promise<any>;
+    updateDbUserActivity: (platformUserId: string, updates: any) => Promise<any>;
+    markDbUserDeletedActivity: (platformUserId: string) => Promise<void>;
+    findDbUserByEmailActivity: (email: string) => Promise<any | null>;
+    restoreDbUserActivity: (platformUserId: string, data: any) => Promise<any>;
+    reactivateAuth0UserActivity: (userId: string) => Promise<Auth0UserProfile>;
+}>({
     startToCloseTimeout: '30s',
     retry: {
         initialInterval: '1s',

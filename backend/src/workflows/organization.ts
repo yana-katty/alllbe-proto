@@ -77,13 +77,14 @@ async function compensate(compensations: Compensation[]): Promise<void> {
  * 
  * SAGA パターン:
  * 1. WorkOS Organization 作成
- * 2. DB Organization 作成（workos_organization_id を保存）
+ * 2. DB Organization 作成（WorkOS Organization ID を id として使用）
  * 3. 管理者ユーザーを WorkOS に作成（オプション）
  * 4. 失敗時は作成済みリソースを削除
  */
 export async function createOrganizationWithWorkosWorkflow(
-    input: OrganizationCreateInput & {
+    input: {
         domains: string[];
+        name: string; // WorkOS Organization 作成用
         adminUser?: {
             email: string;
             firstName: string;
@@ -120,11 +121,10 @@ export async function createOrganizationWithWorkosWorkflow(
             },
         });
 
-        // Step 2: DB Organization 作成（workos_organization_id を保存）
+        // Step 2: DB Organization 作成（WorkOS Organization ID を id として使用）
         log.info('Creating DB Organization', { workosOrgId: workosOrg.id });
-        const dbOrgInput = {
-            ...input,
-            // workosOrganizationId: workosOrg.id, // スキーマに追加されている想定
+        const dbOrgInput: OrganizationCreateInput = {
+            id: workosOrg.id, // WorkOS Organization ID を主キーとして使用
         };
         const dbOrgResult = await createOrganizationActivity(dbOrgInput);
 

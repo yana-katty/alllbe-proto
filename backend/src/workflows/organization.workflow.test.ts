@@ -39,9 +39,6 @@ interface MockActivities {
     createOrganizationActivity?: (input: OrganizationCreateInput) => Promise<ActivityResult<Organization>>;
     updateOrganizationActivity?: (id: string, patch: OrganizationUpdateInput) => Promise<ActivityResult<Organization | null>>;
     deleteOrganizationActivity?: (id: string) => Promise<ActivityResult<boolean>>;
-    getOrganizationByIdActivity?: (id: string) => Promise<ActivityResult<Organization | null>>;
-    getOrganizationByEmailActivity?: (email: string) => Promise<ActivityResult<Organization | null>>;
-    listOrganizationsActivity?: (params: any) => Promise<ActivityResult<Organization[]>>;
     // WorkOS Activities
     createWorkosOrganizationActivity?: (input: any) => Promise<ActivityResult<WorkosOrganization>>;
     deleteWorkosOrganizationActivity?: (id: string) => Promise<ActivityResult<boolean>>;
@@ -79,19 +76,13 @@ describe('Organization Workflows', () => {
     describe('createOrganizationWorkflow', () => {
         it('should create organization successfully', async () => {
             // モック Activity の作成 - 成功ケース
+            const mockOrgId = randomUUID();
             const mockActivities: MockActivities = {
                 createOrganizationActivity: async (input: OrganizationCreateInput) => {
                     return {
                         ok: true,
                         value: {
-                            id: randomUUID(),
-                            name: input.name,
-                            email: input.email,
-                            description: input.description || null,
-                            phone: input.phone || null,
-                            website: input.website || null,
-                            address: input.address || null,
-                            workosOrganizationId: null,
+                            id: input.id, // 新スキーマ: id は外部サービスから受け取る
                             isActive: true,
                             createdAt: new Date(),
                             updatedAt: new Date(),
@@ -110,9 +101,7 @@ describe('Organization Workflows', () => {
                     taskQueue: 'test',
                     args: [
                         {
-                            name: 'Test Organization',
-                            email: 'test@example.com',
-                            description: 'Test Description',
+                            id: mockOrgId, // 新スキーマ: id のみ
                         },
                     ],
                 })
@@ -120,9 +109,7 @@ describe('Organization Workflows', () => {
 
             // アサーション
             expect(result).toBeDefined();
-            expect(result.name).toBe('Test Organization');
-            expect(result.email).toBe('test@example.com');
-            expect(result.description).toBe('Test Description');
+            expect(result.id).toBe(mockOrgId);
             expect(result.isActive).toBe(true);
         });
 
@@ -134,7 +121,7 @@ describe('Organization Workflows', () => {
                         ok: false,
                         error: {
                             code: OrganizationErrorCode.ALREADY_EXISTS,
-                            message: 'Organization with this email already exists',
+                            message: 'Organization with this ID already exists',
                         },
                     };
                 },
@@ -150,8 +137,7 @@ describe('Organization Workflows', () => {
                         taskQueue: 'test',
                         args: [
                             {
-                                name: 'Test Organization',
-                                email: 'existing@example.com',
+                                id: 'existing-org-id',
                             },
                         ],
                     })
@@ -181,14 +167,7 @@ describe('Organization Workflows', () => {
                     return {
                         ok: true,
                         value: {
-                            id: randomUUID(),
-                            name: input.name,
-                            email: input.email,
-                            description: input.description || null,
-                            phone: input.phone || null,
-                            website: input.website || null,
-                            address: input.address || null,
-                            workosOrganizationId: 'workos-org-123',
+                            id: input.id, // 新スキーマ: WorkOS Organization ID
                             isActive: true,
                             createdAt: new Date(),
                             updatedAt: new Date(),
@@ -206,8 +185,6 @@ describe('Organization Workflows', () => {
                     args: [
                         {
                             name: 'Test Organization',
-                            email: 'test@example.com',
-                            description: 'Test Description',
                             domains: ['example.com'],
                         },
                     ],
@@ -215,8 +192,7 @@ describe('Organization Workflows', () => {
             );
 
             expect(result).toBeDefined();
-            expect(result.name).toBe('Test Organization');
-            expect(result.workosOrganizationId).toBe('workos-org-123');
+            expect(result.id).toBe('workos-org-123'); // WorkOS Organization ID が id として保存される
         });
 
         it('should compensate when DB creation fails after WorkOS creation', async () => {
@@ -309,14 +285,7 @@ describe('Organization Workflows', () => {
                     return {
                         ok: true,
                         value: {
-                            id: randomUUID(),
-                            name: input.name,
-                            email: input.email,
-                            description: input.description || null,
-                            phone: input.phone || null,
-                            website: input.website || null,
-                            address: input.address || null,
-                            workosOrganizationId: 'workos-org-123',
+                            id: input.id, // 新スキーマ: WorkOS Organization ID
                             isActive: true,
                             createdAt: new Date(),
                             updatedAt: new Date(),
@@ -348,7 +317,6 @@ describe('Organization Workflows', () => {
                     args: [
                         {
                             name: 'Test Organization',
-                            email: 'test@example.com',
                             domains: ['example.com'],
                             adminUser: {
                                 email: 'admin@example.com',
@@ -388,7 +356,6 @@ describe('Organization Workflows', () => {
                         args: [
                             {
                                 name: 'Test Organization',
-                                email: 'test@example.com',
                                 domains: ['invalid'],
                             },
                         ],
