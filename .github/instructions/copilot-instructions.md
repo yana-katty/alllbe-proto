@@ -1,3 +1,7 @@
+---
+applyTo: "**"
+---
+
 # GitHub Copilot Instructions: Alllbe
 
 ## プロジェクト概要
@@ -47,8 +51,12 @@ backend/
 │   └── shared/        # tRPCとTemporalで共有するコード
 │       ├── domain/    # ビジネスロジック
 │       ├── db/        # DB操作関数
-│       │   └── models/# データモデル
+│       │   ├── connection.ts  # Neon DB接続設定
+│       │   ├── migrate.ts     # マイグレーション実行
+│       │   ├── schema.ts      # Drizzleスキーマ定義
+│       │   └── models/        # データモデル
 │       └── trpc/      # tRPCルーター・ハンドラ
+├── drizzle.config.ts  # Drizzle Kit設定
 ├── package.json
 └── tsconfig.json
 ```
@@ -296,6 +304,12 @@ app.use('/trpc/*', trpcServer({
 - **Drizzle ORM**を使用したtype-safeなクエリ
 - **ResultAsync**によるDB操作のエラーハンドリング
 - **db/models層での抽象化**により具体的なDB実装に依存しない設計
+
+## データベース設計
+
+**専用ガイドライン**: `database.instructions.md`を参照
+
+このプロジェクトでは「SQL Antipatterns, Volume 1」の知見を活用し、`backend/src/shared/db/**` でのデータベース設計時にアンチパターンを避けた最適なスキーマ設計を行います。詳細な設計原則、チェックリスト、ユーザーとの議論フローについては、専用の指示ファイルを参照してください。
 
 ## テスト戦略
 

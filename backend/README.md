@@ -21,13 +21,17 @@ backend/
 │   └── shared/        # tRPCとTemporalで共有するコード
 │       ├── domain/    # ビジネスロジック
 │       ├── db/        # データベース操作
-│       ├── models/    # データモデル
+│       │   ├── connection.ts  # Neon DB接続設定
+│       │   ├── migrate.ts     # マイグレーション実行
+│       │   ├── schema.ts      # Drizzleスキーマ定義
+│       │   └── models/        # データモデル
 │       └── logger/    # 共通ロガー（依存注入可能）
 │           ├── types.ts     # Loggerインターフェース
 │           ├── winston.ts   # Winston実装
 │           ├── temporal.ts  # Temporalアダプター
 │           ├── examples.ts  # 使用例
 │           └── README.md    # ロガー使用ガイド
+├── drizzle.config.ts  # Drizzle Kit設定
 ├── package.json
 └── tsconfig.json
 ```

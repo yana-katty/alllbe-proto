@@ -7,16 +7,30 @@
         "dev:trpc": "tsx watch src/trpc/index.ts",
         "dev:temporal": "tsx watch src/temporal/index.ts",
         "build": "tsc",
-        "test": "vitest"
+        "test": "vitest",
+        "db:generate": "drizzle-kit generate",
+        "db:migrate": "tsx src/shared/db/migrate.ts",
+        "db:studio": "drizzle-kit studio"
     },
     "dependencies": {
+        "@neondatabase/serverless": "^0.9.4",
         "@temporalio/activity": "^1.13.0",
         "@temporalio/worker": "^1.13.0",
         "@temporalio/workflow": "^1.13.0",
+        "dotenv": "^16.4.5",
+        "drizzle-orm": "^0.33.0",
+        "drizzle-zod": "^0.5.1",
         "neverthrow": "^8.2.0",
-        "winston": "^3.18.3"
+        "winston": "^3.18.3",
+        "ws": "^8.18.0",
+        "zod": "^3.23.8"
     },
     "devDependencies": {
-        "@types/node": "^24.7.0"
+        "@types/node": "^24.7.0",
+        "@types/ws": "^8.5.13",
+        "drizzle-kit": "^0.24.0",
+        "tsx": "^4.16.5",
+        "typescript": "^5.5.4",
+        "vitest": "^3.2.4"
     }
 }
