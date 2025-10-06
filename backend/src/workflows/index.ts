@@ -4,11 +4,13 @@
 // Organization Workflows
 export {
     createOrganizationWorkflow,
-    updateOrganizationWorkflow,
-    deleteOrganizationWorkflow,
-    createOrganizationWithCompensationWorkflow,
-    getOrganizationById,
-    getOrganizationByEmail,
-    listOrganizations,
+    createOrganizationWithWorkosWorkflow,
 } from './organization';
+
+// EndUser Workflows
+export {
+    createEndUserWorkflow,
+    updateEndUserWorkflow,
+    deleteEndUserWorkflow,
+} from './endUser';
 

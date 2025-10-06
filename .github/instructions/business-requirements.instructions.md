@@ -151,16 +151,14 @@ UIデザインから価格設定に至るまで、すべての製品決定は「
 2. **Experience（体験）**: LBE コンテンツの核、多様な体験タイプ対応
 3. **User（ユーザー）**: エンドユーザー（プラットフォーム一意ID）と管理ユーザー（Organization 所属）
 4. **Booking（予約）**: Experience 予約・決済・入場記録
-5. **RelatedContent（関連コンテンツ）**: Before/After コンテンツ、アクセス権限管理
-6. **Community（Experience Circle）**: Experience 後のコンテンツアクセス・リテンション、キラーフィーチャー
+5. **ExperienceAssets（関連コンテンツ）**: Before/After コンテンツ、アクセス権限管理
 
 ### リレーションシップ
 - Organization 1:N Experience（組織は複数の Experience を運営）
 - Organization 1:N OrgUser（組織には複数の管理ユーザー）
 - Experience 1:N Booking（Experience には複数の予約）
-- Experience 1:N RelatedContent（Experience には関連コンテンツ）
+- Experience 1:N ExperienceAssets（Experience には複数の関連コンテンツ）
 - User 1:N Booking（エンドユーザーは複数の Experience を予約）
-- Experience 1:1 Community（Experience 後の Experience Circle）
 
 ## API設計要件
 

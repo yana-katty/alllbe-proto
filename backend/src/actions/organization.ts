@@ -5,8 +5,8 @@
  * 主にRead操作を提供し、tRPCから直接呼び出し可能
  * 
  * DB Organization と WorkOS Organization を統合:
- * - DB から基本情報を取得
- * - workos_organization_id が存在する場合、WorkOS からも情報を取得
+ * - DB から基本情報を取得（id = WorkOS Organization ID）
+ * - WorkOS からも情報を取得
  * - 統合されたデータを返す
  * 
  * 依存注入パターンにより、テスト時にActivity関数をモック可能
@@ -18,8 +18,6 @@ import type { WorkosOrganization } from '../activities/auth/workos/types';
 
 // Activity関数の型定義
 type GetOrganizationByIdActivity = (id: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
-type GetOrganizationByEmailActivity = (email: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
-type GetOrganizationByWorkosIdActivity = (workosOrganizationId: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
 type ListOrganizationsActivity = (params: OrganizationQueryInput) => Promise<{ ok: true; value: Organization[] } | { ok: false; error: any }>;
 
 // WorkOS Activity関数の型定義
@@ -28,8 +26,6 @@ type GetWorkosOrganizationActivity = (organizationId: string) => Promise<{ ok: t
 // 依存関数の型定義
 interface OrganizationActionDeps {
     getOrganizationByIdActivity: GetOrganizationByIdActivity;
-    getOrganizationByEmailActivity: GetOrganizationByEmailActivity;
-    getOrganizationByWorkosIdActivity: GetOrganizationByWorkosIdActivity;
     listOrganizationsActivity: ListOrganizationsActivity;
     getWorkosOrganizationActivity?: GetWorkosOrganizationActivity;
 }
@@ -60,10 +56,10 @@ export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'getOrgan
 
         const org = result.value;
 
-        // workos_organization_id が存在する場合、WorkOS からも情報を取得
-        if (org.workosOrganizationId && deps.getWorkosOrganizationActivity) {
+        // id が WorkOS Organization ID なので、直接 WorkOS から情報を取得
+        if (deps.getWorkosOrganizationActivity) {
             try {
-                const workosResult = await deps.getWorkosOrganizationActivity(org.workosOrganizationId);
+                const workosResult = await deps.getWorkosOrganizationActivity(org.id);
                 if (workosResult.ok) {
                     return {
                         ...org,
@@ -72,77 +68,7 @@ export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'getOrgan
                 }
             } catch (error) {
                 // WorkOS からの取得失敗はエラーにせず、DB データのみ返す
-                console.warn('Failed to fetch WorkOS organization data', { workosOrganizationId: org.workosOrganizationId, error });
-            }
-        }
-
-        return org;
-    };
-
-/**
- * Organization取得 (Email指定)
- */
-export const getOrganizationByEmail = (deps: Pick<OrganizationActionDeps, 'getOrganizationByEmailActivity' | 'getWorkosOrganizationActivity'>) =>
-    async (email: string): Promise<OrganizationWithWorkos | null> => {
-        const result = await deps.getOrganizationByEmailActivity(email);
-
-        if (!result.ok) {
-            throw new Error(`Failed to get organization: ${result.error.message}`);
-        }
-
-        if (!result.value) {
-            return null;
-        }
-
-        const org = result.value;
-
-        // workos_organization_id が存在する場合、WorkOS からも情報を取得
-        if (org.workosOrganizationId && deps.getWorkosOrganizationActivity) {
-            try {
-                const workosResult = await deps.getWorkosOrganizationActivity(org.workosOrganizationId);
-                if (workosResult.ok) {
-                    return {
-                        ...org,
-                        workosData: workosResult.value,
-                    };
-                }
-            } catch (error) {
-                console.warn('Failed to fetch WorkOS organization data', { workosOrganizationId: org.workosOrganizationId, error });
-            }
-        }
-
-        return org;
-    };
-
-/**
- * Organization取得 (WorkOS ID指定)
- */
-export const getOrganizationByWorkosId = (deps: Pick<OrganizationActionDeps, 'getOrganizationByWorkosIdActivity' | 'getWorkosOrganizationActivity'>) =>
-    async (workosOrganizationId: string): Promise<OrganizationWithWorkos | null> => {
-        const result = await deps.getOrganizationByWorkosIdActivity(workosOrganizationId);
-
-        if (!result.ok) {
-            throw new Error(`Failed to get organization: ${result.error.message}`);
-        }
-
-        if (!result.value) {
-            return null;
-        }
-
-        const org = result.value;
-
-        // WorkOS からも情報を取得
-        if (deps.getWorkosOrganizationActivity) {
-            try {
-                const workosResult = await deps.getWorkosOrganizationActivity(workosOrganizationId);
-                if (workosResult.ok) {
-                    return {
-                        ...org,
-                        workosData: workosResult.value,
-                    };
-                }
-            } catch (error) {
-                console.warn('Failed to fetch WorkOS organization data', { workosOrganizationId, error });
+                console.warn('Failed to fetch WorkOS organization data', { organizationId: org.id, error });
             }
         }
 
@@ -166,18 +92,16 @@ export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrgani
         if (deps.getWorkosOrganizationActivity) {
             const enrichedOrganizations = await Promise.all(
                 organizations.map(async (org) => {
-                    if (org.workosOrganizationId) {
-                        try {
-                            const workosResult = await deps.getWorkosOrganizationActivity!(org.workosOrganizationId);
-                            if (workosResult.ok) {
-                                return {
-                                    ...org,
-                                    workosData: workosResult.value,
-                                };
-                            }
-                        } catch (error) {
-                            console.warn('Failed to fetch WorkOS organization data', { workosOrganizationId: org.workosOrganizationId, error });
+                    try {
+                        const workosResult = await deps.getWorkosOrganizationActivity!(org.id); // id が WorkOS Organization ID
+                        if (workosResult.ok) {
+                            return {
+                                ...org,
+                                workosData: workosResult.value,
+                            };
                         }
+                    } catch (error) {
+                        console.warn('Failed to fetch WorkOS organization data', { organizationId: org.id, error });
                     }
                     return org;
                 })
@@ -195,8 +119,6 @@ export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrgani
 export async function createOrganizationActions() {
     const {
         getOrganizationByIdActivity,
-        getOrganizationByEmailActivity,
-        getOrganizationByWorkosIdActivity,
         listOrganizationsActivity,
     } = await import('../activities/db/models/organization');
 
@@ -222,8 +144,6 @@ export async function createOrganizationActions() {
 
     return {
         getById: getOrganizationById({ getOrganizationByIdActivity, getWorkosOrganizationActivity }),
-        getByEmail: getOrganizationByEmail({ getOrganizationByEmailActivity, getWorkosOrganizationActivity }),
-        getByWorkosId: getOrganizationByWorkosId({ getOrganizationByWorkosIdActivity, getWorkosOrganizationActivity }),
         list: listOrganizations({ listOrganizationsActivity, getWorkosOrganizationActivity }),
     };
 }

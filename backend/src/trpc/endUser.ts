@@ -12,11 +12,27 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { Client, WorkflowIdReusePolicy } from '@temporalio/client';
 import { router, publicProcedure } from './base';
-import {
-    endUserCreateInputSchema,
-    endUserUpdateInputSchema,
-    endUserLookupInputSchema,
-} from '../activities/auth/endUser';
+import { auth0UserCreateInputSchema, auth0UserUpdateInputSchema } from '../activities/auth/auth0/types';
+
+/**
+ * EndUser Input Schemas for tRPC
+ */
+const endUserCreateInputSchema = z.object({
+    auth0_data: auth0UserCreateInputSchema.optional(),
+    platform_settings: z.record(z.unknown()).optional(),
+});
+
+const endUserUpdateInputSchema = z.object({
+    auth0_updates: auth0UserUpdateInputSchema.optional(),
+    platform_updates: z.record(z.unknown()).optional(),
+});
+
+const endUserLookupInputSchema = z.object({
+    userId: z.string().optional(),
+    auth0_user_id: z.string().optional(),
+    platform_user_id: z.string().optional(),
+    email: z.string().optional(),
+});
 
 /**
  * Temporal Client設定
@@ -120,7 +136,11 @@ export const endUserRouter = router({
                 const handle = await client.workflow.signalWithStart('updateEndUserWorkflow', {
                     workflowId,
                     ...defaultWorkflowOptions,
-                    args: [{ auth0_user_id: input.userId, ...input.updates }],
+                    args: [{
+                        auth0_user_id: input.userId,
+                        auth0_updates: input.updates.auth0_updates,
+                        platform_updates: input.updates.platform_updates,
+                    }],
                     signal: 'startUpdate',
                     signalArgs: [],
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,

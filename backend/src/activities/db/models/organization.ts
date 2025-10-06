@@ -7,23 +7,17 @@ import { eq, ilike, and } from 'drizzle-orm';
 
 // 組織関連の入力スキーマ
 export const organizationCreateSchema = z.object({
-    name: z.string().min(1).max(255),
-    description: z.string().optional(),
-    email: z.string().email(),
-    phone: z.string().min(1).optional(),
-    website: z.string().url().optional(),
-    address: z.string().optional(),
+    id: z.string().min(1), // WorkOS Organization ID
 });
 
-export const organizationUpdateSchema = organizationCreateSchema.partial().extend({
+export const organizationUpdateSchema = z.object({
     isActive: z.boolean().optional(),
 });
 
-export const organizationIdSchema = z.object({ id: z.string().uuid() });
+export const organizationIdSchema = z.object({ id: z.string().min(1) }); // WorkOS Organization ID
 
 export const organizationQuerySchema = z.object({
     isActive: z.boolean().optional(),
-    search: z.string().optional(),
     limit: z.number().min(1).max(100).default(20),
     offset: z.number().min(0).default(0),
 });
@@ -51,8 +45,6 @@ export interface OperationResult<T> { data: T; message: string }
 
 export type InsertOrganization = (data: OrganizationCreateInput) => ResultAsync<Organization, OrganizationError>;
 export type FindOrganizationById = (id: string) => ResultAsync<Organization | null, OrganizationError>;
-export type FindOrganizationByEmail = (email: string) => ResultAsync<Organization | null, OrganizationError>;
-export type FindOrganizationByWorkosId = (workosOrganizationId: string) => ResultAsync<Organization | null, OrganizationError>;
 export type ListOrganizations = (params: OrganizationQueryInput) => ResultAsync<Organization[], OrganizationError>;
 export type UpdateOrganization = (id: string, patch: OrganizationUpdateInput) => ResultAsync<Organization | null, OrganizationError>;
 export type RemoveOrganization = (id: string) => ResultAsync<boolean, OrganizationError>;
@@ -62,12 +54,7 @@ export const insertOrganization = (db: Database): InsertOrganization =>
     (data: OrganizationCreateInput) => {
         return ResultAsync.fromPromise(
             db.insert(organizations).values({
-                name: data.name,
-                description: data.description,
-                email: data.email,
-                phone: data.phone,
-                website: data.website,
-                address: data.address,
+                id: data.id, // WorkOS Organization ID
             }).returning().then(r => selectOrganizationSchema.parse(r[0])),
             (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Insert failed', details: error })
         );
@@ -81,28 +68,11 @@ export const findOrganizationById = (db: Database): FindOrganizationById =>
         );
     };
 
-export const findOrganizationByEmail = (db: Database): FindOrganizationByEmail =>
-    (email: string) => {
-        return ResultAsync.fromPromise(
-            db.select().from(organizations).where(eq(organizations.email, email)).limit(1).then(r => r[0] ? selectOrganizationSchema.parse(r[0]) : null),
-            (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Find by email failed', details: error })
-        );
-    };
-
-export const findOrganizationByWorkosId = (db: Database): FindOrganizationByWorkosId =>
-    (workosOrganizationId: string) => {
-        return ResultAsync.fromPromise(
-            db.select().from(organizations).where(eq(organizations.workosOrganizationId, workosOrganizationId)).limit(1).then(r => r[0] ? selectOrganizationSchema.parse(r[0]) : null),
-            (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Find by WorkOS ID failed', details: error })
-        );
-    };
-
 export const listOrganizations = (db: Database): ListOrganizations =>
     (params: OrganizationQueryInput) => {
-        const { isActive, search, limit, offset } = params;
+        const { isActive, limit, offset } = params;
         const cond: any[] = [];
         if (isActive !== undefined) cond.push(eq(organizations.isActive, isActive));
-        if (search) cond.push(ilike(organizations.name, `%${search}%`));
         const whereClause = cond.length ? and(...cond) : undefined;
 
         return ResultAsync.fromPromise(
@@ -116,12 +86,6 @@ export const updateOrganization = (db: Database): UpdateOrganization =>
         const updateData: Partial<typeof organizations.$inferInsert> & { updatedAt: Date } = {
             updatedAt: new Date()
         };
-        if (patch.name !== undefined) updateData.name = patch.name;
-        if (patch.description !== undefined) updateData.description = patch.description;
-        if (patch.email !== undefined) updateData.email = patch.email;
-        if (patch.phone !== undefined) updateData.phone = patch.phone;
-        if (patch.website !== undefined) updateData.website = patch.website;
-        if (patch.address !== undefined) updateData.address = patch.address;
         if (patch.isActive !== undefined) updateData.isActive = patch.isActive;
 
         return ResultAsync.fromPromise(
@@ -162,7 +126,7 @@ export async function createOrganizationActivity(
 
 /**
  * Organization取得Activity (ID指定)
- * @param id Organization ID
+ * @param id Organization ID (WorkOS Organization ID)
  * @returns 取得されたOrganization、またはエラー
  */
 export async function getOrganizationByIdActivity(
@@ -171,42 +135,6 @@ export async function getOrganizationByIdActivity(
     const { getDatabase } = await import('../connection');
     const db = getDatabase();
     const result = await findOrganizationById(db)(id);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization取得Activity (Email指定)
- * @param email Organization Email
- * @returns 取得されたOrganization、またはエラー
- */
-export async function getOrganizationByEmailActivity(
-    email: string
-): Promise<{ ok: true; value: Organization | null } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findOrganizationByEmail(db)(email);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization取得Activity (WorkOS ID指定)
- * @param workosOrganizationId WorkOS Organization ID
- * @returns 取得されたOrganization、またはエラー
- */
-export async function getOrganizationByWorkosIdActivity(
-    workosOrganizationId: string
-): Promise<{ ok: true; value: Organization | null } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findOrganizationByWorkosId(db)(workosOrganizationId);
 
     if (result.isErr()) {
         return { ok: false, error: result.error };

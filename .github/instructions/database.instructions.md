@@ -1,10 +1,10 @@
 ---
-applyTo: "backend/src/workflows/db/**"
+applyTo: "backend/src/activities/db/**"
 ---
 
 # データベース設計ガイドライン
 
-このガイドラインは `backend/src/shared/db/**` 配下のファイル（スキーマ定義、マイグレーション、モデル操作関数）に適用されます。
+このガイドラインは `backend/src/activities/db/**` 配下のファイル（スキーマ定義、マイグレーション、モデル操作関数）に適用されます。
 
 ## SQL Antipatterns, Volume 1 準拠の設計原則
 
@@ -33,22 +33,46 @@ applyTo: "backend/src/workflows/db/**"
 ### 推奨するスキーマ設計パターン
 
 ```typescript
-// ✅ 推奨: 明示的な列設計
+// ✅ 推奨: 外部サービスのIDを直接主キーとして使用
+// Organizations: WorkOS Organization ID を主キーとして使用
 export const organizations = pgTable('organizations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  phone: varchar('phone', { length: 50 }),
-  website: text('website'),
-  address: text('address'),
-  description: text('description'),
-  isActive: boolean('is_active').default(true).notNull(),
+  id: varchar('id', { length: 255 }).primaryKey(), // WorkOS Organization ID
+  isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// ❌ アンチパターン: EAV設計
-// organizationAttributesテーブルでname, value列による動的属性は避ける
+// Users: Auth0 User ID を主キーとして使用
+export const users = pgTable('users', {
+  id: varchar('id', { length: 255 }).primaryKey(), // Auth0 User ID
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Experiences: 外部IDを外部キーとして参照
+export const experiences = pgTable('experiences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: varchar('organization_id', { length: 255 })
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  // ...
+});
+
+// ✅ メリット:
+// 1. テーブル構造の簡素化（中間IDが不要）
+// 2. JOINの高速化（直接外部サービスIDを使用）
+// 3. データ整合性の向上（外部サービスIDがそのまま主キー）
+// 4. インデックスの削減（主キー自体がインデックス）
+// 5. 設計意図の明確化（外部サービスの参照テーブルであることが明確）
+
+// ❌ アンチパターン: 個人情報の二重管理
+// name, email, phone, address などの個人情報を DB に保存しない
+// WorkOS/Auth0 がマスターデータとして管理し、必要時にAPIで取得する
+
+// ❌ アンチパターン: 不要な中間ID
+// 外部サービスIDとは別に内部IDを持つ設計は、複雑さを増すだけ
 ```
 
 ## 2. リレーション設計の原則
