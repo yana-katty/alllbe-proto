@@ -6,11 +6,12 @@ applyTo: "**"
 
 ## プロジェクト概要
 
-- **目的**: 体験イベントの予約管理システム
+- **目的**: Location Based Entertainment (LBE) の B2B2C Experience 予約管理システム
 - **アーキテクチャ**: モノレポ構成 + 関数型プログラミング + 高階関数依存注入パターン
 - **主要技術**: 
   - **Backend**: TypeScript, Hono, tRPC, Temporal, Drizzle ORM, Neon Database, neverthrow, vitest
   - **Frontend**: Next.js 14, React 18, TypeScript, tRPC Client
+  - **Enterprise**: WorkOS (SSO, Organization 管理, Enterprise Ready 機能)
   - **Shared**: TypeScript型定義の共有
 
 ## モノレポ構成
@@ -428,25 +429,37 @@ export const createOrganization = (
 - **実装ポリシー変更**: 全体に影響するコーディング規約やパターンの変更
 
 #### パス固有の変更（該当する .github/instructions/*.md を更新）
-- **backend/** の変更 → `backend.md` を更新
+- **backend/** の変更 → `backend.instructions.md` を更新
   - ディレクトリ構造、tRPC/Temporal のエントリーポイント、DB操作パターン等
-- **frontend/** の変更 → `frontend.md` を更新
+- **frontend/** の変更 → `frontend.instructions.md` を更新
   - Next.js の構造、API通信パターン、コンポーネント設計等
-- **shared/** の変更 → `shared.md` を更新
+- **shared/** の変更 → `shared.instructions.md` を更新
   - 型定義の追加方法、tsconfig 設定、型共有のパターン等
+- **backend/src/shared/db/** の変更 → `database.instructions.md` を更新
+  - データベーススキーマ、マイグレーション、アンチパターン対策等
+
+#### ビジネス要件の変更（business-requirements.instructions.md を更新）
+- **機能要件変更**: 新機能追加、既存機能の仕様変更
+- **ユーザーロール変更**: 権限体系の変更、新しいロールの追加
+- **ビジネスルール変更**: 予約・決済・キャンセルルールの変更
+- **非機能要件変更**: パフォーマンス・セキュリティ・拡張性要件の変更
+- **コンプライアンス要件変更**: GDPR、個人情報保護法等の対応変更
 
 ### 更新タイミング
 
-**リファクタリング、新機能追加、アーキテクチャ変更の完了後すぐに実行すること。**
+**リファクタリング、新機能追加、アーキテクチャ変更、ビジネス要件変更の完了後すぐに実行すること。**
 
 - コード変更とドキュメント更新を同じPRに含める
 - 変更があったディレクトリの指示ファイルも同時に更新
 - モノレポ全体に影響する変更は `copilot-instructions.md` を更新
+- ビジネス要件の変更は `business-requirements.instructions.md` を更新
 
 ### 更新時のチェックリスト
 
-- [ ] 該当するディレクトリの指示ファイル（backend.md/frontend.md/shared.md）を確認
+- [ ] 該当するディレクトリの指示ファイル（backend/frontend/shared/database.instructions.md）を確認
+- [ ] ビジネス要件の変更がある場合は `business-requirements.instructions.md` を確認
 - [ ] ディレクトリ構造の図を更新
 - [ ] 新しい技術スタックを追加
 - [ ] コード例を最新の構造に合わせて更新
+- [ ] 新機能のビジネスルールを要件書に反映
 - [ ] 必要に応じて全体の copilot-instructions.md も更新
