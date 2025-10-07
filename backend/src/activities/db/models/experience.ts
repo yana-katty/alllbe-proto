@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ResultAsync } from 'neverthrow';
+import { Result, ResultAsync } from 'neverthrow';
 import { Database } from '../connection';
 import { experiences, selectExperienceSchema } from '../schema';
 import type { Experience } from '../schema';
@@ -63,20 +63,20 @@ export interface ExperienceError {
 
 export interface OperationResult<T> { data: T; message: string }
 
-export type InsertExperience = (data: ExperienceCreateInput) => ResultAsync<Experience, ExperienceError>;
-export type FindExperienceById = (id: string) => ResultAsync<Experience | null, ExperienceError>;
-export type ListExperiences = (params: ExperienceQueryInput) => ResultAsync<Experience[], ExperienceError>;
-export type ListExperiencesByOrganization = (organizationId: string, params?: Partial<ExperienceQueryInput>) => ResultAsync<Experience[], ExperienceError>;
-export type UpdateExperience = (id: string, patch: ExperienceUpdateInput) => ResultAsync<Experience | null, ExperienceError>;
-export type RemoveExperience = (id: string) => ResultAsync<boolean, ExperienceError>;
+export type InsertExperience = (data: ExperienceCreateInput) => Promise<Result<Experience, ExperienceError>>;
+export type FindExperienceById = (id: string) => Promise<Result<Experience | null, ExperienceError>>;
+export type ListExperiences = (params: ExperienceQueryInput) => Promise<Result<Experience[], ExperienceError>>;
+export type ListExperiencesByOrganization = (organizationId: string, params?: Partial<ExperienceQueryInput>) => Promise<Result<Experience[], ExperienceError>>;
+export type UpdateExperience = (id: string, patch: ExperienceUpdateInput) => Promise<Result<Experience | null, ExperienceError>>;
+export type RemoveExperience = (id: string) => Promise<Result<boolean, ExperienceError>>;
 
 // ============================================
 // DB操作関数（高階関数パターン）
 // ============================================
 
 export const insertExperience = (db: Database): InsertExperience =>
-    (data: ExperienceCreateInput) => {
-        return ResultAsync.fromPromise(
+    async (data: ExperienceCreateInput) => {
+        return await ResultAsync.fromPromise(
             db.insert(experiences).values({
                 organizationId: data.organizationId,
                 title: data.title,
@@ -98,15 +98,15 @@ export const insertExperience = (db: Database): InsertExperience =>
     };
 
 export const findExperienceById = (db: Database): FindExperienceById =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.select().from(experiences).where(eq(experiences.id, id)).limit(1).then(r => r[0] ? selectExperienceSchema.parse(r[0]) : null),
             (error) => ({ code: ExperienceErrorCode.DATABASE, message: 'Find by ID failed', details: error })
         );
     };
 
 export const listExperiences = (db: Database): ListExperiences =>
-    (params: ExperienceQueryInput) => {
+    async (params: ExperienceQueryInput) => {
         const { organizationId, status, experienceType, search, startDateFrom, startDateTo, isActive, limit, offset } = params;
         const cond: any[] = [];
 
@@ -122,25 +122,25 @@ export const listExperiences = (db: Database): ListExperiences =>
 
         const whereClause = cond.length ? and(...cond) : undefined;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.select().from(experiences).where(whereClause).limit(limit).offset(offset).orderBy(experiences.createdAt).then(rows => rows.map(r => selectExperienceSchema.parse(r))),
             (error) => ({ code: ExperienceErrorCode.DATABASE, message: 'List failed', details: error })
         );
     };
 
 export const listExperiencesByOrganization = (db: Database): ListExperiencesByOrganization =>
-    (organizationId: string, params?: Partial<ExperienceQueryInput>) => {
+    async (organizationId: string, params?: Partial<ExperienceQueryInput>) => {
         const fullParams: ExperienceQueryInput = {
             organizationId,
             limit: params?.limit ?? 20,
             offset: params?.offset ?? 0,
             ...params,
         };
-        return listExperiences(db)(fullParams);
+        return await listExperiences(db)(fullParams);
     };
 
 export const updateExperience = (db: Database): UpdateExperience =>
-    (id: string, patch: ExperienceUpdateInput) => {
+    async (id: string, patch: ExperienceUpdateInput) => {
         const updateData: Partial<typeof experiences.$inferInsert> & { updatedAt: Date } = {
             updatedAt: new Date()
         };
@@ -159,132 +159,16 @@ export const updateExperience = (db: Database): UpdateExperience =>
         if (patch.coverImageUrl !== undefined) updateData.coverImageUrl = patch.coverImageUrl;
         if (patch.tags !== undefined) updateData.tags = patch.tags;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.update(experiences).set(updateData).where(eq(experiences.id, id)).returning().then(r => r[0] ? selectExperienceSchema.parse(r[0]) : null),
             (error) => ({ code: ExperienceErrorCode.DATABASE, message: 'Update failed', details: error })
         );
     };
 
 export const removeExperience = (db: Database): RemoveExperience =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.delete(experiences).where(eq(experiences.id, id)).returning().then(r => r.length > 0),
             (error) => ({ code: ExperienceErrorCode.DATABASE, message: 'Delete failed', details: error })
         );
     };
-
-// ============================================
-// Activity Functions (Temporal用)
-// ============================================
-
-/**
- * Experience作成Activity
- * @param data 作成データ
- * @returns 作成されたExperience、またはエラー
- */
-export async function createExperienceActivity(
-    data: ExperienceCreateInput
-): Promise<{ ok: true; value: Experience } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await insertExperience(db)(data);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Experience取得Activity (ID指定)
- * @param id Experience ID
- * @returns 取得されたExperience、またはエラー
- */
-export async function getExperienceByIdActivity(
-    id: string
-): Promise<{ ok: true; value: Experience | null } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findExperienceById(db)(id);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Experience一覧取得Activity
- * @param params クエリパラメータ
- * @returns Experience配列、またはエラー
- */
-export async function listExperiencesActivity(
-    params: ExperienceQueryInput
-): Promise<{ ok: true; value: Experience[] } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listExperiences(db)(params);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization別Experience一覧取得Activity
- * @param organizationId Organization ID
- * @param params クエリパラメータ
- * @returns Experience配列、またはエラー
- */
-export async function listExperiencesByOrganizationActivity(
-    organizationId: string,
-    params?: Partial<ExperienceQueryInput>
-): Promise<{ ok: true; value: Experience[] } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listExperiencesByOrganization(db)(organizationId, params);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Experience更新Activity
- * @param id Experience ID
- * @param patch 更新データ
- * @returns 更新されたExperience、またはエラー
- */
-export async function updateExperienceActivity(
-    id: string,
-    patch: ExperienceUpdateInput
-): Promise<{ ok: true; value: Experience | null } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await updateExperience(db)(id, patch);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Experience削除Activity
- * @param id Experience ID
- * @returns 削除成功フラグ、またはエラー
- */
-export async function deleteExperienceActivity(
-    id: string
-): Promise<{ ok: true; value: boolean } | { ok: false; error: ExperienceError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await removeExperience(db)(id);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}

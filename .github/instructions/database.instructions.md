@@ -189,6 +189,24 @@ export const events = pgTable('events', {
 
 ## 5. トランザクション設計
 
+### 基本原則
+
+**トランザクションを使うべき場合**:
+- DB層でしか保証できない原子性が必要な場合
+- 複数テーブルを跨いで整合性を保つ必要がある場合
+- 例: 在庫チェック + 予約作成を原子的に実行
+
+**Workflowでやるべき場合（推奨）**:
+- データを読み込んで、それを元に判断・処理する場合
+- Activity間の協調が必要な場合
+- **コードの見やすさ・保守性が向上する場合**
+- 例: Bookingを読む → バリデーション → Paymentを読む → 条件判断 → 更新
+
+⚠️ **重要な設計判断**:
+- DB層でしかできないことなら Activity内トランザクションもOK
+- ただし、Workflowの方がコードが見やすく保守性が高いなら、Workflowを優先する
+- 特に「読み込み → 判断 → 更新」のフローはWorkflowで実装すべき
+
 ### 避けるべきアンチパターン
 
 **Reading Dirty Data (ダーティリード)**
@@ -199,52 +217,152 @@ export const events = pgTable('events', {
 
 ### 推奨するトランザクション設計
 
+#### ✅ OK: 単一テーブルのトランザクション処理
+
 ```typescript
-// ✅ 適切なトランザクション境界
-export const createEventWithBookings = (db: Database) => 
-  async (eventData: EventCreateInput, initialBookings: BookingCreateInput[]) => {
-    return ResultAsync.fromPromise(
-      db.transaction(async (tx) => {
-        // 1. イベント作成
-        const eventResult = await tx.insert(events).values({
-          organizationId: eventData.organizationId,
-          title: eventData.title,
-          description: eventData.description,
-          capacity: eventData.capacity,
-          startDateTime: eventData.startDateTime,
-          endDateTime: eventData.endDateTime,
-        }).returning();
+export const updateBookingActivity = (db: Database) =>
+    (id: string, patch: BookingUpdateInput): ResultAsync<Booking | null, BookingError> => {
+        return ResultAsync.fromPromise(
+            db.transaction(async (tx) => {
+                // 単一テーブルの複数操作はトランザクションで保護
+                const booking = await tx
+                    .select()
+                    .from(bookings)
+                    .where(eq(bookings.id, id))
+                    .limit(1);
+
+                if (booking.length === 0) {
+                    throw new Error('Booking not found');
+                }
+
+                const updated = await tx
+                    .update(bookings)
+                    .set({ ...patch, updatedAt: new Date() })
+                    .where(eq(bookings.id, id))
+                    .returning();
+
+                return selectBookingSchema.parse(updated[0]);
+            }),
+            (error) => ({
+                code: BookingErrorCode.DATABASE,
+                message: 'Failed to update booking',
+                details: error
+            })
+        );
+    };
+```
+
+#### ✅ 推奨: Workflowで複数テーブルを管理（保守性・可読性優先）
+
+```typescript
+// backend/src/workflows/booking.ts
+export async function checkInWithQRCodeWorkflow(qrCode: string) {
+  // Activity 1: QRコードでBookingを取得
+  const bookingResult = await activities.getBookingByQrCode(qrCode);
+  
+  if (bookingResult.isErr() || !bookingResult.value) {
+    throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
+  }
+  
+  const booking = bookingResult.value;
+  
+  // バリデーション（Workflowで明示的に実行）
+  if (booking.status === 'attended') {
+    throw new ApplicationFailure('Already checked in', 'ALREADY_ATTENDED');
+  }
+  
+  if (booking.status === 'cancelled') {
+    throw new ApplicationFailure('Booking is cancelled', 'BOOKING_CANCELLED');
+  }
+  
+  // Activity 2: Bookingをattendedに更新
+  const updateResult = await activities.updateBooking(booking.id, {
+    status: 'attended',
+    attendedAt: new Date(),
+  });
+  
+  if (updateResult.isErr()) {
+    throw new ApplicationFailure('Failed to update booking', 'DATABASE_ERROR');
+  }
+  
+  // Activity 3: 現地払いの場合、Paymentを完了状態に更新
+  const paymentResult = await activities.getPaymentByBookingId(booking.id);
+  
+  if (paymentResult.isOk() && paymentResult.value) {
+    const payment = paymentResult.value;
+    
+    if (payment.paymentMethod === 'onsite' && payment.status === 'pending') {
+      const completeResult = await activities.completePayment(booking.id);
+      
+      // 支払い完了エラーは警告のみ（入場は成功させる）
+      if (completeResult.isErr()) {
+        log.warn('Payment completion failed', { 
+          bookingId: booking.id, 
+          error: completeResult.error 
+        });
+      }
+    }
+  }
+  
+  return updateResult.value;
+}
+```
+
+**Workflowのメリット**:
+- フローが明確で読みやすい
+- 各Activityが単純で保守しやすい
+- テストが容易（各Activityを個別にテスト可能）
+- 拡張しやすい（通知、ポイント付与などを追加しやすい）
+
+#### ❌ NG: データを読んで判断する処理をActivity内で実装
+
+```typescript
+// ❌ BAD: Activity内でデータを読んで判断・処理する
+export const processBookingActivity = (db: Database) =>
+    async (bookingId: string) => {
+        // ❌ データを読む → 判断 → 処理 はWorkflowの責務
+        const booking = await db.select().from(bookings).where(eq(bookings.id, bookingId));
         
-        const event = eventResult[0];
-        
-        // 2. 初期予約の作成（必要な場合）
-        if (initialBookings.length > 0) {
-          const bookingData = initialBookings.map(booking => ({
-            ...booking,
-            eventId: event.id,
-          }));
-          await tx.insert(bookings).values(bookingData);
+        if (booking.status === 'confirmed') {
+            // 条件分岐して処理
+            await sendNotification(booking);
         }
         
-        // 3. イベント統計の初期化
-        await tx.insert(eventStats).values({
-          eventId: event.id,
-          totalCapacity: eventData.capacity,
-          currentBookings: initialBookings.length,
-          availableSlots: eventData.capacity - initialBookings.length,
-        });
+        // さらに別のテーブルを読む
+        const payment = await db.select().from(payments).where(eq(payments.bookingId, bookingId));
         
-        return event;
-      }),
-      (error) => ({ 
-        code: 'TRANSACTION_ERROR', 
-        message: 'Failed to create event with bookings', 
-        details: error 
-      })
-    );
-  };
+        if (payment.status === 'pending') {
+            // また条件分岐
+            await processPayment(payment);
+        }
+    };
 
-// ✅ 読み取り専用トランザクションの活用
+// ✅ GOOD: Workflowで読み込み → 判断 → Activity呼び出し
+export async function processBookingWorkflow(bookingId: string) {
+    // Workflowでデータを読む
+    const bookingResult = await activities.getBookingById(bookingId);
+    const booking = bookingResult._unsafeUnwrap();
+    
+    // Workflowで判断
+    if (booking.status === 'confirmed') {
+        // 条件に応じてActivityを呼び出す
+        await activities.sendNotification(booking);
+    }
+    
+    // さらに別のデータを読む
+    const paymentResult = await activities.getPaymentByBookingId(bookingId);
+    const payment = paymentResult._unsafeUnwrap();
+    
+    // また判断
+    if (payment.status === 'pending') {
+        await activities.processPayment(payment.id);
+    }
+}
+```
+
+#### ✅ OK: 読み取り専用トランザクションの活用
+
+```typescript
 export const getEventWithBookings = (db: Database) => (eventId: string) => {
   return ResultAsync.fromPromise(
     db.transaction(async (tx) => {
@@ -310,7 +428,178 @@ export async function down(db: PostgresJsDatabase<any>) {
 }
 ```
 
-## 7. DB操作関数の設計
+## 7. DB操作関数の統一パターン
+
+### 基本原則
+
+**すべてのDB操作関数は高階関数パターン（カリー化）で実装する**
+
+- ❌ **禁止**: Activity関数とDB操作関数を分けて実装
+- ❌ **禁止**: Activity関数内で `getDatabase()` を動的インポート
+- ✅ **推奨**: DB操作関数のみを実装し、依存注入パターンで使用
+
+### 統一パターンの実装
+
+```typescript
+// ✅ 推奨: DB操作関数のみを実装（高階関数パターン）
+import { ResultAsync } from 'neverthrow';
+import { Database } from '../connection';
+import { bookings, selectBookingSchema } from '../schema';
+import { eq } from 'drizzle-orm';
+
+// 型定義
+export type InsertBooking = (data: BookingCreateInput) => ResultAsync<Booking, BookingError>;
+export type FindBookingById = (id: string) => ResultAsync<Booking | null, BookingError>;
+export type UpdateBooking = (id: string, patch: BookingUpdateInput) => ResultAsync<Booking | null, BookingError>;
+
+// DB操作関数の実装
+export const insertBooking = (db: Database): InsertBooking =>
+    (data: BookingCreateInput) => {
+        return ResultAsync.fromPromise(
+            db.insert(bookings).values({
+                experienceId: data.experienceId,
+                userId: data.userId,
+                numberOfParticipants: data.numberOfParticipants,
+                status: data.status ?? 'confirmed',
+            }).returning().then(r => selectBookingSchema.parse(r[0])),
+            (error) => ({ 
+                code: BookingErrorCode.DATABASE, 
+                message: 'Insert failed', 
+                details: error 
+            })
+        );
+    };
+
+export const findBookingById = (db: Database): FindBookingById =>
+    (id: string) => {
+        return ResultAsync.fromPromise(
+            db.select()
+                .from(bookings)
+                .where(eq(bookings.id, id))
+                .limit(1)
+                .then(r => r[0] ? selectBookingSchema.parse(r[0]) : null),
+            (error) => ({ 
+                code: BookingErrorCode.DATABASE, 
+                message: 'Find by ID failed', 
+                details: error 
+            })
+        );
+    };
+
+export const updateBooking = (db: Database): UpdateBooking =>
+    (id: string, patch: BookingUpdateInput) => {
+        const updateData: Partial<typeof bookings.$inferInsert> & { updatedAt: Date } = {
+            updatedAt: new Date()
+        };
+        
+        if (patch.status !== undefined) updateData.status = patch.status;
+        if (patch.attendedAt !== undefined) updateData.attendedAt = patch.attendedAt;
+
+        return ResultAsync.fromPromise(
+            db.update(bookings)
+                .set(updateData)
+                .where(eq(bookings.id, id))
+                .returning()
+                .then(r => r[0] ? selectBookingSchema.parse(r[0]) : null),
+            (error) => ({ 
+                code: BookingErrorCode.DATABASE, 
+                message: 'Update failed', 
+                details: error 
+            })
+        );
+    };
+```
+
+### ❌ アンチパターン: Activity関数とDB操作関数の分離
+
+```typescript
+// ❌ BAD: Activity関数を別に定義する（冗長で保守性が低い）
+
+// DB操作関数
+export const insertBooking = (db: Database): InsertBooking => ...
+
+// Activity関数（不要な重複）
+export const createBookingActivity = (db: Database) =>
+    (data: BookingCreateInput): ResultAsync<Booking, BookingError> => {
+        return insertBooking(db)(data); // ただのラッパー、意味がない
+    };
+
+// または
+
+// Activity関数内でgetDatabase()を呼ぶ（グローバル状態依存）
+export async function createBookingActivity(
+    data: BookingCreateInput
+): Promise<{ ok: true; value: Booking } | { ok: false; error: BookingError }> {
+    const { getDatabase } = await import('../connection'); // ❌ 動的インポート
+    const db = getDatabase(); // ❌ グローバル状態に依存
+    const result = await insertBooking(db)(data);
+    
+    if (result.isErr()) {
+        return { ok: false, error: result.error };
+    }
+    return { ok: true, value: result.value };
+}
+```
+
+### ✅ 使用例: Temporal Workerでの依存注入
+
+```typescript
+// backend/src/activities/index.ts
+import { getDatabase } from './db/connection';
+import * as bookingModel from './db/models/booking';
+import * as paymentModel from './db/models/payment';
+
+// DB接続を取得
+const db = getDatabase();
+
+// すべてのActivity関数をエクスポート（依存注入済み）
+export const bookingActivities = {
+    insertBooking: bookingModel.insertBooking(db),
+    findBookingById: bookingModel.findBookingById(db),
+    updateBooking: bookingModel.updateBooking(db),
+    listBookings: bookingModel.listBookings(db),
+    // ...
+};
+
+export const paymentActivities = {
+    insertPayment: paymentModel.insertPayment(db),
+    findPaymentById: paymentModel.findPaymentById(db),
+    completePayment: paymentModel.completePayment(db),
+    refundPayment: paymentModel.refundPayment(db),
+    // ...
+};
+```
+
+```typescript
+// backend/src/workflows/booking.ts
+import { proxyActivities } from '@temporalio/workflow';
+import type { bookingActivities, paymentActivities } from '../activities';
+
+const activities = proxyActivities<typeof bookingActivities & typeof paymentActivities>({
+    startToCloseTimeout: '5 minutes',
+});
+
+export async function createBookingWorkflow(data: BookingCreateInput) {
+    // Activity関数を直接使用（依存注入済み）
+    const bookingResult = await activities.insertBooking(data);
+    
+    if (bookingResult.isErr()) {
+        throw new ApplicationFailure('Failed to create booking', bookingResult.error.code);
+    }
+    
+    return bookingResult.value;
+}
+```
+
+### 設計上のメリット
+
+1. **シンプルさ**: DB操作関数のみを定義すれば良い（Activity関数の重複を排除）
+2. **依存注入**: データベース接続をWorker起動時に一度だけ注入
+3. **テスト容易性**: モックDBを注入してテスト可能
+4. **型安全性**: ResultAsync型により、エラーハンドリングが型安全
+5. **一貫性**: すべてのモデルファイルで同じパターンを使用
+
+## 8. DB操作関数の設計
 
 ### Result型を活用したエラーハンドリング
 
@@ -356,7 +645,7 @@ export const findEventWithOrganization = (db: Database) => (eventId: string) => 
 };
 ```
 
-## 8. DB設計レビューのチェックリスト
+## 9. DB設計レビューのチェックリスト
 
 ### スキーマ設計時に確認すべき項目
 
@@ -383,7 +672,7 @@ export const findEventWithOrganization = (db: Database) => (eventId: string) => 
 - [ ] **アクセス制御**: 適切なDB権限設定が計画されているか
 - [ ] **機密データ**: 個人情報やパスワードの適切な取り扱いが設計されているか
 
-## 9. ユーザーとの設計議論フロー
+## 10. ユーザーとの設計議論フロー
 
 DB設計時は以下のフローでユーザーと議論を行います：
 

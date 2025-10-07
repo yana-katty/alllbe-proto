@@ -71,34 +71,3 @@ export const getAuth0UserSummaryById = (deps: Pick<Auth0UserActionDeps, 'getAuth
         log.info('Successfully retrieved Auth0 user summary', { userId });
         return result.value;
     };
-
-/**
- * 実際のActivity関数を使用したファクトリ関数
- * tRPCから呼び出す際はこれを使用
- * 
- * @example
- * // tRPC Handler
- * const actions = await createAuth0UserActions(auth0Client);
- * const user = await actions.getById('auth0|123456');
- */
-export async function createAuth0UserActions(client: any, connectionName?: string) {
-    const {
-        getAuth0User,
-        getAuth0UserSummary,
-        createAuth0User,
-        updateAuth0User,
-    } = await import('../activities/auth/auth0');
-
-    // Activity関数に依存を注入
-    const getAuth0UserActivity = getAuth0User(client);
-    const getAuth0UserSummaryActivity = getAuth0UserSummary(client);
-    const createAuth0UserActivity = createAuth0User(client, connectionName || 'Username-Password-Authentication');
-    const updateAuth0UserActivity = updateAuth0User(client);
-
-    return {
-        getById: getAuth0UserById({ getAuth0UserActivity }),
-        getSummaryById: getAuth0UserSummaryById({ getAuth0UserSummaryActivity }),
-        // Create/Update は Workflow経由を推奨（補償処理が必要なため）
-        // 必要に応じて追加可能
-    };
-}

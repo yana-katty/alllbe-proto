@@ -11,17 +11,13 @@
  */
 
 import { proxyActivities, ApplicationFailure, log } from '@temporalio/workflow';
-import type * as dbActivities from '../activities/db/models/organization';
 import type * as workosActivities from '../activities/auth/workos';
 import type { Organization } from '../activities/db/schema';
-import type { OrganizationCreateInput } from '../activities/db/models/organization';
+import type { OrganizationCreateInput, createOrganizationActivities } from '../activities/db/models/organization';
+import { Result } from 'neverthrow';
 
-// DB Activity Proxy
-const {
-    createOrganizationActivity,
-    updateOrganizationActivity,
-    deleteOrganizationActivity,
-} = proxyActivities<typeof dbActivities>({
+// DB Activity Proxy - ファクトリ関数の戻り値型を使用
+const { removeOrganization, insertOrganization } = proxyActivities<ReturnType<typeof createOrganizationActivities>>({
     startToCloseTimeout: '30s',
     retry: {
         initialInterval: '1s',
@@ -101,6 +97,7 @@ export async function createOrganizationWithWorkosWorkflow(
             name: input.name,
             domains: input.domains,
         });
+        console.log("WorkOS Organization creation result:", workosOrgResult);
 
         if (!workosOrgResult.ok) {
             throw new ApplicationFailure(
@@ -126,9 +123,10 @@ export async function createOrganizationWithWorkosWorkflow(
         const dbOrgInput: OrganizationCreateInput = {
             id: workosOrg.id, // WorkOS Organization ID を主キーとして使用
         };
-        const dbOrgResult = await createOrganizationActivity(dbOrgInput);
+        const dbOrgResult = await insertOrganization(dbOrgInput);
+        console.log("DB Organization creation result:", dbOrgResult.);
 
-        if (!dbOrgResult.ok) {
+        if (new Result(dbOrgResult).isErr()) {
             throw new ApplicationFailure(
                 `DB Organization creation failed: ${dbOrgResult.error.message}`,
                 dbOrgResult.error.code,
@@ -140,8 +138,8 @@ export async function createOrganizationWithWorkosWorkflow(
         compensations.unshift({
             message: `Deleting DB Organization: ${dbOrg.id}`,
             fn: async () => {
-                const deleteResult = await deleteOrganizationActivity(dbOrg.id);
-                if (!deleteResult.ok) {
+                const deleteResult = await removeOrganization(dbOrg.id);
+                if (deleteResult.isErr()) {
                     log.error('Failed to delete DB Organization', { error: deleteResult.error });
                 }
             },
@@ -183,23 +181,3 @@ export async function createOrganizationWithWorkosWorkflow(
         throw error;
     }
 }
-
-/**
- * 単純な DB Organization 作成 Workflow（WorkOS なし）
- */
-export async function createOrganizationWorkflow(
-    input: OrganizationCreateInput
-): Promise<Organization> {
-    const result = await createOrganizationActivity(input);
-
-    if (!result.ok) {
-        throw new ApplicationFailure(
-            result.error.message,
-            result.error.code,
-            false
-        );
-    }
-
-    return result.value;
-}
-

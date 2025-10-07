@@ -215,56 +215,67 @@ Payment.update({
 
 ### 4. 来場・入場処理
 
+⚠️ **重要な設計原則**: 
+- **BookingとPaymentは別々のWorkflowで更新する**
+- Activity内で複数テーブルを跨ぐトランザクションは実装しない
+- 複雑なフローはWorkflowで管理し、SAGAパターンで補償処理を実装
+
 **ステップ1: QRコード読取**
 - Organization のスタッフが入場管理端末でQRコードをスキャン
 - `qrCode` で Booking を検索
 
-**バリデーション**:
+**Workflow実装例**:
 ```typescript
-// 1. Booking が存在するか
-if (!booking) return Error('予約が見つかりません');
-
-// 2. すでに入場済みか
-if (booking.status === 'attended') return Error('すでに入場済みです');
-
-// 3. キャンセル済みか
-if (booking.status === 'cancelled') return Error('この予約はキャンセルされています');
-
-// 4. 日時が正しいか（オプション）
-if (booking.scheduledVisitTime > now + 30min) return Error('入場時刻前です');
-```
-
-**ステップ2: 現地決済の場合の支払い処理**
-```typescript
-// Paymentテーブルから決済情報を取得
-const payment = await getPaymentByBookingId(booking.id);
-
-if (payment && payment.paymentMethod === 'onsite' && payment.status === 'pending') {
-  // スタッフが現金/カードで決済完了を確認
-  await completePaymentActivity(booking.id);
-  // Payment.status が 'completed' に更新
-  // Payment.paidAt が設定される
-}
-```
-
-**ステップ3: 入場記録**
-```typescript
-// markBookingAsAttendedActivity が内部的に以下を実行：
-// 1. Booking の status を 'attended' に更新
-// 2. Booking の attendedAt を設定
-// 3. 現地払いの場合は Payment を完了状態に更新
-
-await markBookingAsAttendedActivity(qrCode);
-
-// 結果:
-Booking {
-  status: 'attended',           // 入場済み
-  attendedAt: '2025-10-15T14:05:00Z',
-}
-
-Payment {
-  status: 'completed',          // 支払い完了（現地払いの場合）
-  paidAt: '2025-10-15T14:05:00Z',
+// backend/src/workflows/booking.ts
+export async function checkInWithQRCodeWorkflow(qrCode: string) {
+  // Activity 1: QRコードでBookingを取得
+  const bookingResult = await activities.getBookingByQrCode(qrCode);
+  
+  if (bookingResult.isErr() || !bookingResult.value) {
+    throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
+  }
+  
+  const booking = bookingResult.value;
+  
+  // バリデーション
+  if (booking.status === 'attended') {
+    throw new ApplicationFailure('Already checked in', 'ALREADY_ATTENDED');
+  }
+  
+  if (booking.status === 'cancelled') {
+    throw new ApplicationFailure('Booking is cancelled', 'BOOKING_CANCELLED');
+  }
+  
+  // Activity 2: Bookingをattendedに更新
+  const updateResult = await activities.updateBooking(booking.id, {
+    status: 'attended',
+    attendedAt: new Date(),
+  });
+  
+  if (updateResult.isErr()) {
+    throw new ApplicationFailure('Failed to update booking', 'DATABASE_ERROR');
+  }
+  
+  // Activity 3: 現地払いの場合、Paymentを完了状態に更新
+  const paymentResult = await activities.getPaymentByBookingId(booking.id);
+  
+  if (paymentResult.isOk() && paymentResult.value) {
+    const payment = paymentResult.value;
+    
+    if (payment.paymentMethod === 'onsite' && payment.status === 'pending') {
+      const completeResult = await activities.completePayment(booking.id);
+      
+      // 支払い完了エラーは警告のみ（入場は成功させる）
+      if (completeResult.isErr()) {
+        log.warn('Payment completion failed', { 
+          bookingId: booking.id, 
+          error: completeResult.error 
+        });
+      }
+    }
+  }
+  
+  return updateResult.value;
 }
 ```
 
@@ -287,7 +298,6 @@ Payment {
 ```typescript
 Booking {
   status: 'attended',
-  paymentStatus: 'completed',
   attendedAt: '2025-10-15T14:05:00Z',
 }
 ```
@@ -1110,34 +1120,38 @@ bookings (1) ←→ (1) payments  // 1対1リレーション
 
 ```typescript
 // CRUD
-createBookingActivity(data: BookingCreateInput): Promise<Result<Booking>>
-getBookingByIdActivity(id: string): Promise<Result<Booking>>
-getBookingByQrCodeActivity(qrCode: string): Promise<Result<Booking>>
-listBookingsActivity(params: BookingQueryInput): Promise<Result<Booking[]>>
-listBookingsByUserActivity(userId: string, params?): Promise<Result<Booking[]>>
-listBookingsByExperienceActivity(experienceId: string, params?): Promise<Result<Booking[]>>
-updateBookingActivity(id: string, patch: BookingUpdateInput): Promise<Result<Booking>>
-deleteBookingActivity(id: string): Promise<Result<boolean>>
+createBookingActivity(db: Database) => (data: BookingCreateInput): ResultAsync<Booking, BookingError>
+getBookingByIdActivity(db: Database) => (id: string): ResultAsync<Booking | null, BookingError>
+getBookingByQrCodeActivity(db: Database) => (qrCode: string): ResultAsync<Booking | null, BookingError>
+listBookingsActivity(db: Database) => (params: BookingQueryInput): ResultAsync<Booking[], BookingError>
+listBookingsByUserActivity(db: Database) => (userId: string, params?): ResultAsync<Booking[], BookingError>
+listBookingsByExperienceActivity(db: Database) => (experienceId: string, params?): ResultAsync<Booking[], BookingError>
+updateBookingActivity(db: Database) => (id: string, patch: BookingUpdateInput): ResultAsync<Booking | null, BookingError>
+deleteBookingActivity(db: Database) => (id: string): ResultAsync<boolean, BookingError>
 
 // Business Logic
-markBookingAsAttendedActivity(qrCode: string): Promise<Result<Booking>>
-listAttendedBookingsByUserActivity(userId: string): Promise<Result<Booking[]>>
-hasUserAttendedExperienceActivity(userId: string, experienceId: string): Promise<Result<boolean>>
+listAttendedBookingsByUserActivity(db: Database) => (userId: string): ResultAsync<Booking[], BookingError>
+hasUserAttendedExperienceActivity(db: Database) => (userId: string, experienceId: string): ResultAsync<boolean, BookingError>
 ```
+
+**⚠️ 設計方針**: 
+- 入場処理（QRコード読み取り → Booking更新 → Payment更新）はWorkflowで実装
+- 各Activityは単一テーブルの操作に専念
+- データを読んで判断する処理はWorkflowの責務
 
 ### Payment Activities
 
 ```typescript
 // CRUD
-createPaymentActivity(data: PaymentCreateInput): Promise<Result<Payment>>
-getPaymentByIdActivity(id: string): Promise<Result<Payment>>
-getPaymentByBookingIdActivity(bookingId: string): Promise<Result<Payment>>
-listPaymentsActivity(params: PaymentQueryInput): Promise<Result<Payment[]>>
-updatePaymentActivity(id: string, patch: PaymentUpdateInput): Promise<Result<Payment>>
-deletePaymentActivity(id: string): Promise<Result<boolean>>
+createPaymentActivity(db: Database) => (data: PaymentCreateInput): ResultAsync<Payment, PaymentError>
+getPaymentByIdActivity(db: Database) => (id: string): ResultAsync<Payment | null, PaymentError>
+getPaymentByBookingIdActivity(db: Database) => (bookingId: string): ResultAsync<Payment | null, PaymentError>
+listPaymentsActivity(db: Database) => (params: PaymentQueryInput): ResultAsync<Payment[], PaymentError>
+updatePaymentActivity(db: Database) => (id: string, patch: PaymentUpdateInput): ResultAsync<Payment | null, PaymentError>
+deletePaymentActivity(db: Database) => (id: string): ResultAsync<boolean, PaymentError>
 
 // Business Logic
-completePaymentActivity(bookingId: string, paymentIntentId?: string): Promise<Result<Payment>>
+completePaymentActivity(db: Database) => (bookingId: string, paymentIntentId?: string): ResultAsync<Payment, PaymentError>
 refundPaymentActivity(bookingId: string, refundId?: string): Promise<Result<Payment>>
 ```
 

@@ -111,39 +111,3 @@ export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrgani
 
         return organizations;
     };
-
-/**
- * 実際のActivity関数を使用したファクトリ関数
- * tRPCから呼び出す際はこれを使用
- */
-export async function createOrganizationActions() {
-    const {
-        getOrganizationByIdActivity,
-        listOrganizationsActivity,
-    } = await import('../activities/db/models/organization');
-
-    // WorkOS Organization Activity をインポート（オプション）
-    let getWorkosOrganizationActivity: GetWorkosOrganizationActivity | undefined;
-    try {
-        const workosModule = await import('../activities/auth/workos');
-        // WorkOS Organization 取得用の Activity ラッパーを作成
-        getWorkosOrganizationActivity = async (organizationId: string) => {
-            const { createWorkosClient, getWorkosConfigFromEnv, getWorkosOrganization } = workosModule;
-            const config = getWorkosConfigFromEnv();
-            const client = createWorkosClient(config);
-            const result = await getWorkosOrganization(client)(organizationId);
-
-            if (result.isErr()) {
-                return { ok: false, error: result.error };
-            }
-            return { ok: true, value: result.value };
-        };
-    } catch (error) {
-        console.warn('WorkOS module not available, organization actions will work without WorkOS data', { error });
-    }
-
-    return {
-        getById: getOrganizationById({ getOrganizationByIdActivity, getWorkosOrganizationActivity }),
-        list: listOrganizations({ listOrganizationsActivity, getWorkosOrganizationActivity }),
-    };
-}

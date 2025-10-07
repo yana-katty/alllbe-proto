@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ResultAsync } from 'neverthrow';
+import { Result, ResultAsync } from 'neverthrow';
 import { Database } from '../connection';
 import { users, selectUserSchema } from '../schema';
 import type { User } from '../schema';
@@ -43,19 +43,19 @@ export interface UserError {
 
 export interface OperationResult<T> { data: T; message: string }
 
-export type InsertUser = (data: UserCreateInput) => ResultAsync<User, UserError>;
-export type FindUserById = (id: string) => ResultAsync<User | null, UserError>;
-export type ListUsers = (params: UserQueryInput) => ResultAsync<User[], UserError>;
-export type UpdateUser = (id: string, patch: UserUpdateInput) => ResultAsync<User | null, UserError>;
-export type RemoveUser = (id: string) => ResultAsync<boolean, UserError>;
+export type InsertUser = (data: UserCreateInput) => Promise<Result<User, UserError>>;
+export type FindUserById = (id: string) => Promise<Result<User | null, UserError>>;
+export type ListUsers = (params: UserQueryInput) => Promise<Result<User[], UserError>>;
+export type UpdateUser = (id: string, patch: UserUpdateInput) => Promise<Result<User | null, UserError>>;
+export type RemoveUser = (id: string) => Promise<Result<boolean, UserError>>;
 
 // ============================================
 // DB操作関数（高階関数パターン）
 // ============================================
 
 export const insertUser = (db: Database): InsertUser =>
-    (data: UserCreateInput) => {
-        return ResultAsync.fromPromise(
+    async (data: UserCreateInput) => {
+        return await ResultAsync.fromPromise(
             db.insert(users).values({
                 id: data.id, // Auth0 User ID
             }).returning().then(r => selectUserSchema.parse(r[0])),
@@ -64,127 +64,43 @@ export const insertUser = (db: Database): InsertUser =>
     };
 
 export const findUserById = (db: Database): FindUserById =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.select().from(users).where(eq(users.id, id)).limit(1).then(r => r[0] ? selectUserSchema.parse(r[0]) : null),
             (error) => ({ code: UserErrorCode.DATABASE, message: 'Find by ID failed', details: error })
         );
     };
 
 export const listUsers = (db: Database): ListUsers =>
-    (params: UserQueryInput) => {
+    async (params: UserQueryInput) => {
         const { isActive, limit, offset } = params;
         const cond: any[] = [];
         if (isActive !== undefined) cond.push(eq(users.isActive, isActive));
         const whereClause = cond.length ? and(...cond) : undefined;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(users.createdAt).then(rows => rows.map(r => selectUserSchema.parse(r))),
             (error) => ({ code: UserErrorCode.DATABASE, message: 'List failed', details: error })
         );
     };
 
 export const updateUser = (db: Database): UpdateUser =>
-    (id: string, patch: UserUpdateInput) => {
+    async (id: string, patch: UserUpdateInput) => {
         const updateData: Partial<typeof users.$inferInsert> & { updatedAt: Date } = {
             updatedAt: new Date()
         };
         if (patch.isActive !== undefined) updateData.isActive = patch.isActive;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.update(users).set(updateData).where(eq(users.id, id)).returning().then(r => r[0] ? selectUserSchema.parse(r[0]) : null),
             (error) => ({ code: UserErrorCode.DATABASE, message: 'Update failed', details: error })
         );
     };
 
 export const removeUser = (db: Database): RemoveUser =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.delete(users).where(eq(users.id, id)).returning().then(r => r.length > 0),
             (error) => ({ code: UserErrorCode.DATABASE, message: 'Delete failed', details: error })
         );
-    };
-
-// ============================================
-// Activity Functions (Temporal用)
-// ============================================
-
-/**
- * User作成Activity
- * 
- * @param insert - insertUser関数（依存注入）
- * @returns Activity関数
- */
-export const createUserActivity = (insert: InsertUser) =>
-    async (data: UserCreateInput): Promise<{ ok: true; value: User } | { ok: false; error: UserError }> => {
-        const result = await insert(data);
-
-        if (result.isErr()) {
-            return { ok: false, error: result.error };
-        }
-        return { ok: true, value: result.value };
-    };
-
-/**
- * User取得Activity (ID指定)
- * 
- * @param findById - findUserById関数（依存注入）
- * @returns Activity関数
- */
-export const getUserByIdActivity = (findById: FindUserById) =>
-    async (id: string): Promise<{ ok: true; value: User | null } | { ok: false; error: UserError }> => {
-        const result = await findById(id);
-
-        if (result.isErr()) {
-            return { ok: false, error: result.error };
-        }
-        return { ok: true, value: result.value };
-    };
-
-/**
- * User一覧取得Activity
- * 
- * @param list - listUsers関数（依存注入）
- * @returns Activity関数
- */
-export const listUsersActivity = (list: ListUsers) =>
-    async (params: UserQueryInput): Promise<{ ok: true; value: User[] } | { ok: false; error: UserError }> => {
-        const result = await list(params);
-
-        if (result.isErr()) {
-            return { ok: false, error: result.error };
-        }
-        return { ok: true, value: result.value };
-    };
-
-/**
- * User更新Activity
- * 
- * @param update - updateUser関数（依存注入）
- * @returns Activity関数
- */
-export const updateUserActivity = (update: UpdateUser) =>
-    async (id: string, patch: UserUpdateInput): Promise<{ ok: true; value: User | null } | { ok: false; error: UserError }> => {
-        const result = await update(id, patch);
-
-        if (result.isErr()) {
-            return { ok: false, error: result.error };
-        }
-        return { ok: true, value: result.value };
-    };
-
-/**
- * User削除Activity
- * 
- * @param remove - removeUser関数（依存注入）
- * @returns Activity関数
- */
-export const deleteUserActivity = (remove: RemoveUser) =>
-    async (id: string): Promise<{ ok: true; value: boolean } | { ok: false; error: UserError }> => {
-        const result = await remove(id);
-
-        if (result.isErr()) {
-            return { ok: false, error: result.error };
-        }
-        return { ok: true, value: result.value };
     };

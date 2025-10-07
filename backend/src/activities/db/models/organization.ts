@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ResultAsync } from 'neverthrow';
+import { Result, ResultAsync } from 'neverthrow';
 import { Database } from '../connection';
 import { organizations, selectOrganizationSchema } from '../schema';
 import type { Organization } from '../schema';
@@ -43,16 +43,16 @@ export interface OrganizationError {
 
 export interface OperationResult<T> { data: T; message: string }
 
-export type InsertOrganization = (data: OrganizationCreateInput) => ResultAsync<Organization, OrganizationError>;
-export type FindOrganizationById = (id: string) => ResultAsync<Organization | null, OrganizationError>;
-export type ListOrganizations = (params: OrganizationQueryInput) => ResultAsync<Organization[], OrganizationError>;
-export type UpdateOrganization = (id: string, patch: OrganizationUpdateInput) => ResultAsync<Organization | null, OrganizationError>;
-export type RemoveOrganization = (id: string) => ResultAsync<boolean, OrganizationError>;
+export type InsertOrganization = (data: OrganizationCreateInput) => Promise<Result<Organization, OrganizationError>>;
+export type FindOrganizationById = (id: string) => Promise<Result<Organization | null, OrganizationError>>;
+export type ListOrganizations = (params: OrganizationQueryInput) => Promise<Result<Organization[], OrganizationError>>;
+export type UpdateOrganization = (id: string, patch: OrganizationUpdateInput) => Promise<Result<Organization | null, OrganizationError>>;
+export type RemoveOrganization = (id: string) => Promise<Result<boolean, OrganizationError>>;
 
 
 export const insertOrganization = (db: Database): InsertOrganization =>
-    (data: OrganizationCreateInput) => {
-        return ResultAsync.fromPromise(
+    async (data: OrganizationCreateInput) => {
+        return await ResultAsync.fromPromise(
             db.insert(organizations).values({
                 id: data.id, // WorkOS Organization ID
             }).returning().then(r => selectOrganizationSchema.parse(r[0])),
@@ -61,139 +61,60 @@ export const insertOrganization = (db: Database): InsertOrganization =>
     };
 
 export const findOrganizationById = (db: Database): FindOrganizationById =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.select().from(organizations).where(eq(organizations.id, id)).limit(1).then(r => r[0] ? selectOrganizationSchema.parse(r[0]) : null),
             (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Find by ID failed', details: error })
         );
     };
 
 export const listOrganizations = (db: Database): ListOrganizations =>
-    (params: OrganizationQueryInput) => {
+    async (params: OrganizationQueryInput) => {
         const { isActive, limit, offset } = params;
         const cond: any[] = [];
         if (isActive !== undefined) cond.push(eq(organizations.isActive, isActive));
         const whereClause = cond.length ? and(...cond) : undefined;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.select().from(organizations).where(whereClause).limit(limit).offset(offset).orderBy(organizations.createdAt).then(rows => rows.map(r => selectOrganizationSchema.parse(r))),
             (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'List failed', details: error })
         );
     };
 
 export const updateOrganization = (db: Database): UpdateOrganization =>
-    (id: string, patch: OrganizationUpdateInput) => {
+    async (id: string, patch: OrganizationUpdateInput) => {
         const updateData: Partial<typeof organizations.$inferInsert> & { updatedAt: Date } = {
             updatedAt: new Date()
         };
         if (patch.isActive !== undefined) updateData.isActive = patch.isActive;
 
-        return ResultAsync.fromPromise(
+        return await ResultAsync.fromPromise(
             db.update(organizations).set(updateData).where(eq(organizations.id, id)).returning().then(r => r[0] ? selectOrganizationSchema.parse(r[0]) : null),
             (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Update failed', details: error })
         );
     };
 
 export const removeOrganization = (db: Database): RemoveOrganization =>
-    (id: string) => {
-        return ResultAsync.fromPromise(
+    async (id: string) => {
+        return await ResultAsync.fromPromise(
             db.delete(organizations).where(eq(organizations.id, id)).returning().then(r => r.length > 0),
             (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Delete failed', details: error })
         );
     };
 
-// ============================================
-// Activity Functions (Temporal用)
-// ============================================
-
 /**
- * Organization作成Activity
- * @param data 作成データ
- * @returns 作成されたOrganization、またはエラー
+ * Organization Activities ファクトリ関数
+ * Temporal Workflow で使用するために、DB接続を注入してすべてのActivity関数を返す
+ * 
+ * @param db - Database接続
+ * @returns すべてのOrganization Activity関数
  */
-export async function createOrganizationActivity(
-    data: OrganizationCreateInput
-): Promise<{ ok: true; value: Organization } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await insertOrganization(db)(data);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization取得Activity (ID指定)
- * @param id Organization ID (WorkOS Organization ID)
- * @returns 取得されたOrganization、またはエラー
- */
-export async function getOrganizationByIdActivity(
-    id: string
-): Promise<{ ok: true; value: Organization | null } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await findOrganizationById(db)(id);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization一覧取得Activity
- * @param params クエリパラメータ
- * @returns Organization配列、またはエラー
- */
-export async function listOrganizationsActivity(
-    params: OrganizationQueryInput
-): Promise<{ ok: true; value: Organization[] } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listOrganizations(db)(params);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization更新Activity
- * @param id Organization ID
- * @param patch 更新データ
- * @returns 更新されたOrganization、またはエラー
- */
-export async function updateOrganizationActivity(
-    id: string,
-    patch: OrganizationUpdateInput
-): Promise<{ ok: true; value: Organization | null } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await updateOrganization(db)(id, patch);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * Organization削除Activity
- * @param id Organization ID
- * @returns 削除成功フラグ、またはエラー
- */
-export async function deleteOrganizationActivity(
-    id: string
-): Promise<{ ok: true; value: boolean } | { ok: false; error: OrganizationError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await removeOrganization(db)(id);
-
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
+export function createOrganizationActivities(db: Database) {
+    return {
+        insertOrganization: insertOrganization(db),
+        findOrganizationById: findOrganizationById(db),
+        listOrganizations: listOrganizations(db),
+        updateOrganization: updateOrganization(db),
+        removeOrganization: removeOrganization(db),
+    };
 }

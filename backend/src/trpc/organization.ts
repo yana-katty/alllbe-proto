@@ -14,7 +14,8 @@ import {
     createOrganizationWithWorkosWorkflow,
 } from '../workflows/organization';
 import { organizationCreateSchema, organizationUpdateSchema, organizationQuerySchema } from '../activities/db/models/organization';
-import { createOrganizationActions } from '../actions/organization';
+// Actions は使用していないためコメントアウト
+// import { createOrganizationActions } from '../actions/organization';
 
 // Temporal Client (シングルトン)
 let temporalClient: Client | null = null;
@@ -40,15 +41,11 @@ export const organizationRouter = router({
     getById: publicProcedure
         .input(z.string().uuid())
         .query(async ({ input }) => {
-            try {
-                const actions = await createOrganizationActions();
-                return await actions.getById(input);
-            } catch (error) {
-                throw new TRPCError({
-                    code: 'NOT_FOUND',
-                    message: error instanceof Error ? error.message : 'Organization not found',
-                });
-            }
+            // TODO: WorkOS統合版のActions実装後に有効化
+            throw new TRPCError({
+                code: 'NOT_IMPLEMENTED',
+                message: 'WorkOS integration pending',
+            });
         }),
 
     /**
@@ -57,15 +54,11 @@ export const organizationRouter = router({
     getByEmail: publicProcedure
         .input(z.string().email())
         .query(async ({ input }) => {
-            try {
-                const actions = await createOrganizationActions();
-                return await actions.getByEmail(input);
-            } catch (error) {
-                throw new TRPCError({
-                    code: 'INTERNAL_SERVER_ERROR',
-                    message: error instanceof Error ? error.message : 'Failed to get organization',
-                });
-            }
+            // TODO: WorkOS統合版のActions実装後に有効化
+            throw new TRPCError({
+                code: 'NOT_IMPLEMENTED',
+                message: 'WorkOS integration pending',
+            });
         }),
 
     /**
@@ -74,15 +67,11 @@ export const organizationRouter = router({
     getByWorkosId: publicProcedure
         .input(z.string())
         .query(async ({ input }) => {
-            try {
-                const actions = await createOrganizationActions();
-                return await actions.getByWorkosId(input);
-            } catch (error) {
-                throw new TRPCError({
-                    code: 'INTERNAL_SERVER_ERROR',
-                    message: error instanceof Error ? error.message : 'Failed to get organization',
-                });
-            }
+            // TODO: WorkOS統合版のActions実装後に有効化
+            throw new TRPCError({
+                code: 'NOT_IMPLEMENTED',
+                message: 'WorkOS integration pending',
+            });
         }),
 
     /**
@@ -91,15 +80,11 @@ export const organizationRouter = router({
     list: publicProcedure
         .input(organizationQuerySchema)
         .query(async ({ input }) => {
-            try {
-                const actions = await createOrganizationActions();
-                return await actions.list(input);
-            } catch (error) {
-                throw new TRPCError({
-                    code: 'INTERNAL_SERVER_ERROR',
-                    message: error instanceof Error ? error.message : 'Failed to list organizations',
-                });
-            }
+            // TODO: WorkOS統合版のActions実装後に有効化
+            throw new TRPCError({
+                code: 'NOT_IMPLEMENTED',
+                message: 'WorkOS integration pending',
+            });
         }),
 
     // ============================================
@@ -114,7 +99,7 @@ export const organizationRouter = router({
         .mutation(async ({ input }) => {
             try {
                 const client = await getTemporalClient();
-                const workflowId = `organization-create-${input.email}-${Date.now()}`;
+                const workflowId = `organization-create-${input.id}-${Date.now()}`;
 
                 const handle = await client.workflow.start(createOrganizationWorkflow, {
                     args: [input],
@@ -137,7 +122,8 @@ export const organizationRouter = router({
      * Organizationを作成 (WorkOS連携版)
      */
     createWithWorkos: publicProcedure
-        .input(organizationCreateSchema.extend({
+        .input(z.object({
+            name: z.string(),
             domains: z.array(z.string()),
             adminUser: z.object({
                 email: z.string().email(),
@@ -148,7 +134,7 @@ export const organizationRouter = router({
         .mutation(async ({ input }) => {
             try {
                 const client = await getTemporalClient();
-                const workflowId = `organization-workos-create-${input.email}-${Date.now()}`;
+                const workflowId = `organization-workos-create-${input.name}-${Date.now()}`;
 
                 const handle = await client.workflow.start(createOrganizationWithWorkosWorkflow, {
                     args: [input],
