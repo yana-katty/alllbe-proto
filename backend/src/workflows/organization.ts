@@ -11,10 +11,24 @@
  */
 
 import { proxyActivities, ApplicationFailure, log } from '@temporalio/workflow';
-import type * as workosActivities from '../activities/auth/workos';
+import type { WorkosOrganization } from '../activities/auth/workos/types';
 import type { Organization } from '../activities/db/schema';
 import type { OrganizationCreateInput, createOrganizationActivities } from '../activities/db/models/organization';
 import type { InsertBrand, DeleteBrand } from '../activities/db/models/brand';
+
+// WorkOS Activity 型定義
+type CreateWorkosOrganization = (input: { name: string; domains: string[] }) => Promise<WorkosOrganization>;
+type DeleteWorkosOrganization = (organizationId: string) => Promise<void>;
+type CreateWorkosUser = (input: {
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    emailVerified?: boolean;
+}) => Promise<{ id: string; email: string; firstName?: string; lastName?: string }>;
+type CreateWorkosOrganizationMembership = (input: {
+    userId: string;
+    organizationId: string;
+}) => Promise<{ id: string; userId: string; organizationId: string }>;
 
 // DB Activity Proxy - ファクトリ関数の戻り値型を使用
 const { removeOrganization, insertOrganization } = proxyActivities<ReturnType<typeof createOrganizationActivities>>({
@@ -41,13 +55,18 @@ const { insertBrand, deleteBrand } = proxyActivities<{
     },
 });
 
-// WorkOS Activity Proxy
+// WorkOS Activity Proxy - 明示的な型定義を使用
 const {
-    createWorkosOrganizationActivity,
-    deleteWorkosOrganizationActivity,
-    createWorkosUserActivity,
-    createWorkosOrganizationMembershipActivity,
-} = proxyActivities<typeof workosActivities>({
+    createWorkosOrganization,
+    deleteWorkosOrganization,
+    createWorkosUser,
+    createWorkosOrganizationMembership,
+} = proxyActivities<{
+    createWorkosOrganization: CreateWorkosOrganization;
+    deleteWorkosOrganization: DeleteWorkosOrganization;
+    createWorkosUser: CreateWorkosUser;
+    createWorkosOrganizationMembership: CreateWorkosOrganizationMembership;
+}>({
     startToCloseTimeout: '30s',
     retry: {
         initialInterval: '1s',
@@ -110,7 +129,7 @@ export async function createOrganizationWithWorkosWorkflow(
     try {
         // Step 1: WorkOS Organization 作成
         log.info('Creating WorkOS Organization', { name: input.name });
-        const workosOrg = await createWorkosOrganizationActivity({
+        const workosOrg = await createWorkosOrganization({
             name: input.name,
             domains: input.domains,
         });
@@ -120,7 +139,7 @@ export async function createOrganizationWithWorkosWorkflow(
             message: `Deleting WorkOS Organization: ${workosOrg.id}`,
             fn: async () => {
                 try {
-                    await deleteWorkosOrganizationActivity(workosOrg.id);
+                    await deleteWorkosOrganization(workosOrg.id);
                 } catch (error) {
                     log.error('Failed to delete WorkOS Organization', { error });
                 }
@@ -173,7 +192,7 @@ export async function createOrganizationWithWorkosWorkflow(
         if (input.adminUser) {
             log.info('Creating WorkOS admin user', { email: input.adminUser.email });
             try {
-                const user = await createWorkosUserActivity({
+                const user = await createWorkosUser({
                     email: input.adminUser.email,
                     firstName: input.adminUser.firstName,
                     lastName: input.adminUser.lastName,
@@ -182,7 +201,7 @@ export async function createOrganizationWithWorkosWorkflow(
 
                 // Organization に関連付け
                 try {
-                    await createWorkosOrganizationMembershipActivity({
+                    await createWorkosOrganizationMembership({
                         userId: user.id,
                         organizationId: workosOrg.id,
                     });

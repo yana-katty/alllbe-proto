@@ -41,6 +41,7 @@
     "devDependencies": {
         "@electric-sql/pglite": "^0.3.10",
         "@temporalio/testing": "^1.13.0",
+        "@trpc/client": "^11.6.0",
         "@types/node": "^24.7.0",
         "@types/ws": "^8.5.13",
         "drizzle-kit": "^0.24.0",

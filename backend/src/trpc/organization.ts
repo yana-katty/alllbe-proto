@@ -8,27 +8,12 @@
 import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { Connection, Client, WorkflowIdReusePolicy } from '@temporalio/client';
+import { WorkflowIdReusePolicy } from '@temporalio/client';
 import { ApplicationFailure } from '@temporalio/common';
 import {
     createOrganizationWithWorkosWorkflow,
 } from '../workflows/organization';
 import { organizationCreateSchema, organizationUpdateSchema, organizationQuerySchema } from '../activities/db/models/organization';
-// Actions は使用していないためコメントアウト
-// import { createOrganizationActions } from '../actions/organization';
-
-// Temporal Client (シングルトン)
-let temporalClient: Client | null = null;
-
-async function getTemporalClient(): Promise<Client> {
-    if (!temporalClient) {
-        const connection = await Connection.connect({
-            address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-        });
-        temporalClient = new Client({ connection });
-    }
-    return temporalClient;
-}
 
 export const organizationRouter = router({
     // ============================================
@@ -109,16 +94,15 @@ export const organizationRouter = router({
                 lastName: z.string(),
             }).optional(),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `organization-workos-create-${input.name}-${Date.now()}`;
+                const workflowId = `organization-workos-create-${input.name}`;
 
-                const handle = await client.workflow.start(createOrganizationWithWorkosWorkflow, {
+                const handle = await ctx.temporal.workflow.start(createOrganizationWithWorkosWorkflow, {
                     args: [input],
                     taskQueue: 'default',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
 
                 return await handle.result();

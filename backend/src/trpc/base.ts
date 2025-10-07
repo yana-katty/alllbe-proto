@@ -7,6 +7,7 @@
 
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { TRPC_ERROR_CODE_KEY } from '@trpc/server/rpc';
+import type { Client } from '@temporalio/client';
 import { ApplicationFailure } from '@temporalio/common';
 import { z } from 'zod';
 
@@ -14,10 +15,10 @@ import { z } from 'zod';
  * tRPC Context
  * リクエストごとに渡されるコンテキスト情報
  */
-export interface Context {
-    // TODO: 認証情報、DB接続などを追加
+export interface Context extends Record<string, unknown> {
+    temporal: Client;
+    // TODO: 認証情報を追加
     // user?: User;
-    // db: Database;
 }
 
 /**

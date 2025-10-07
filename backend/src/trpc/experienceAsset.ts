@@ -2,13 +2,13 @@
  * ExperienceAsset tRPC Router
  * 
  * Read操作: Actionsを直接呼び出し
- * CUD操作: Workflowを使用（将来実装予定）
+ * CUD操作: Temporal Workflowを使用
  */
 
 import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { ApplicationFailure } from '@temporalio/common';
+import { ApplicationFailure, WorkflowIdReusePolicy } from '@temporalio/common';
 import { getDatabase } from '../activities/db/connection';
 import {
     createExperienceAssetActions,
@@ -24,6 +24,11 @@ import {
     experienceAssetUpdateSchema,
     experienceAssetQuerySchema,
 } from '../activities/db/models/experienceAssets';
+import {
+    createExperienceAssetWorkflow,
+    updateExperienceAssetWorkflow,
+    deleteExperienceAssetWorkflow,
+} from '../workflows/experienceAsset';
 
 // DB接続を取得
 const db = getDatabase();
@@ -112,9 +117,18 @@ export const experienceAssetRouter = router({
      */
     create: publicProcedure
         .input(experienceAssetCreateSchema)
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await assetActions.createExperienceAsset(input);
+                const workflowId = `experience-asset-create-${input.experienceId}`;
+
+                const handle = await ctx.temporal.workflow.start(createExperienceAssetWorkflow, {
+                    args: [input],
+                    taskQueue: 'main',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({
@@ -135,9 +149,18 @@ export const experienceAssetRouter = router({
             id: z.string().uuid(),
             data: experienceAssetUpdateSchema,
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await assetActions.updateExperienceAsset(input.id, input.data);
+                const workflowId = `experience-asset-update-${input.id}`;
+
+                const handle = await ctx.temporal.workflow.start(updateExperienceAssetWorkflow, {
+                    args: [input.id, input.data],
+                    taskQueue: 'main',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({
@@ -155,9 +178,18 @@ export const experienceAssetRouter = router({
      */
     delete: publicProcedure
         .input(z.string().uuid())
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await assetActions.deleteExperienceAsset(input);
+                const workflowId = `experience-asset-delete-${input}`;
+
+                const handle = await ctx.temporal.workflow.start(deleteExperienceAssetWorkflow, {
+                    args: [input],
+                    taskQueue: 'main',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({

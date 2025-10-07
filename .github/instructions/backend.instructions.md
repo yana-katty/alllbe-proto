@@ -455,7 +455,7 @@ export const userRouter = router({
         args: [input],
         taskQueue: 'default',
         workflowId: `user-${input.email}`,
-        workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+        workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });
       return await handle.result();
     }),

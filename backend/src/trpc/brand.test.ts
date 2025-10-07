@@ -50,7 +50,7 @@ vi.mock('@temporalio/client', () => ({
         };
     }),
     WorkflowIdReusePolicy: {
-        WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE: 'ALLOW_DUPLICATE',
+        ALLOW_DUPLICATE: 'ALLOW_DUPLICATE',
     },
 }));
 

@@ -8,7 +8,7 @@
 import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { Connection, Client, WorkflowIdReusePolicy } from '@temporalio/client';
+import { WorkflowIdReusePolicy } from '@temporalio/client';
 import { ApplicationFailure } from '@temporalio/common';
 import {
     createBrandWorkflow,
@@ -27,19 +27,6 @@ import {
     deleteBrand,
     countBrandsByOrganizationId,
 } from '../activities/db/models/brand';
-
-// Temporal Client (シングルトン)
-let temporalClient: Client | null = null;
-
-async function getTemporalClient(): Promise<Client> {
-    if (!temporalClient) {
-        const connection = await Connection.connect({
-            address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-        });
-        temporalClient = new Client({ connection });
-    }
-    return temporalClient;
-}
 
 // Brand Actions インスタンス（シングルトン）
 const db = getDatabase();
@@ -173,16 +160,16 @@ export const brandRouter = router({
         .input(brandCreateSchema.extend({
             planType: z.enum(['standard', 'enterprise']),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `brand-create-${input.organizationId}-${Date.now()}`;
+                // Use ctx.temporal instead
+                const workflowId = `brand-create-${input.organizationId}`;
 
-                const handle = await client.workflow.start(createBrandWorkflow, {
+                const handle = await ctx.temporal.workflow.start(createBrandWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
 
                 return await handle.result();
@@ -215,16 +202,16 @@ export const brandRouter = router({
             id: z.string().uuid(),
             data: brandUpdateSchema,
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `brand-update-${input.id}-${Date.now()}`;
+                // Use ctx.temporal instead
+                const workflowId = `brand-update-${input.id}`;
 
-                const handle = await client.workflow.start(updateBrandWorkflow, {
+                const handle = await ctx.temporal.workflow.start(updateBrandWorkflow, {
                     args: [input.id, input.data],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
 
                 return await handle.result();
@@ -256,16 +243,16 @@ export const brandRouter = router({
      */
     delete: publicProcedure
         .input(z.string().uuid())
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `brand-delete-${input}-${Date.now()}`;
+                // Use ctx.temporal instead
+                const workflowId = `brand-delete-${input}`;
 
-                const handle = await client.workflow.start(deleteBrandWorkflow, {
+                const handle = await ctx.temporal.workflow.start(deleteBrandWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
 
                 await handle.result();

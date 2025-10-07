@@ -212,7 +212,7 @@ export const organizationRouter = router({
                 args: [input],
                 taskQueue: 'default',
                 workflowId,
-                workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+                workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
             });
             
             return await handle.result();

@@ -24,8 +24,6 @@ export {
     updateWorkosOrganization,
     deleteWorkosOrganization,
     listWorkosOrganizations,
-    createWorkosOrganizationActivity,
-    deleteWorkosOrganizationActivity,
 } from './organization';
 
 // User Activities (カリー化された関数)
@@ -39,8 +37,6 @@ export {
     listWorkosOrganizationUsers,
     checkWorkosOrganizationMembership,
     deleteWorkosOrganizationMembership,
-    createWorkosUserActivity,
-    createWorkosOrganizationMembershipActivity,
 } from './user';
 
 // Types

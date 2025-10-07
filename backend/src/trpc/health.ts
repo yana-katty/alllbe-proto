@@ -104,10 +104,10 @@ export const healthRouter = router({
             organizationId: z.string().default('test_org_001'),
             brandName: z.string().default('Test Brand'),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `health-brand-${Date.now()}`;
+                // Use ctx.temporal instead
+                const workflowId = `health-brand-${input.organizationId}`;
 
                 trpcLogger.info('Starting Brand creation workflow', {
                     workflowId,
@@ -115,7 +115,7 @@ export const healthRouter = router({
                     brandName: input.brandName,
                 });
 
-                const handle = await client.workflow.start(createBrandWorkflow, {
+                const handle = await ctx.temporal.workflow.start(createBrandWorkflow, {
                     args: [
                         {
                             organizationId: input.organizationId,

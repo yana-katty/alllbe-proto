@@ -140,7 +140,8 @@ export const organizationRouter = router({
       const handle = await temporalClient.workflow.start(createOrganizationWorkflow, {
         args: [input],
         taskQueue: 'main',
-        workflowId: `org-${input.email}-${Date.now()}`,
+        workflowId: `org-${input.email}`,
+        workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });
       
       const result = await handle.result();
@@ -301,7 +302,8 @@ export const bookingRouter = router({
         const handle = await temporalClient.workflow.start(bookExperienceWorkflow, {
           args: [input],
           taskQueue: 'main',
-          workflowId: `booking-${ctx.user.id}-${Date.now()}`,
+          workflowId: `booking-${ctx.user.id}-${input.experienceId}`,
+          workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
         });
         
         const result = await handle.result();

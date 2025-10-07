@@ -10,7 +10,7 @@
 import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { Connection, Client, WorkflowIdReusePolicy } from '@temporalio/client';
+import { WorkflowIdReusePolicy } from '@temporalio/client';
 import { ApplicationFailure } from '@temporalio/common';
 import {
     createBookingWorkflow,
@@ -38,19 +38,6 @@ import {
     listAttendedBookingsByUser,
     hasUserAttendedExperience,
 } from '../activities/db/models/booking';
-
-// Temporal Client (シングルトン)
-let temporalClient: Client | null = null;
-
-async function getTemporalClient(): Promise<Client> {
-    if (!temporalClient) {
-        const connection = await Connection.connect({
-            address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-        });
-        temporalClient = new Client({ connection });
-    }
-    return temporalClient;
-}
 
 // Booking Actions の依存関数（シングルトン）
 const db = getDatabase();
@@ -240,16 +227,15 @@ export const bookingRouter = router({
      */
     create: publicProcedure
         .input(bookingCreateSchema)
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `booking-create-${input.userId}-${Date.now()}`;
+                const workflowId = `booking-create-${input.userId}-${input.experienceId}`;
 
-                const booking = await client.workflow.execute(createBookingWorkflow, {
+                const booking = await ctx.temporal.workflow.execute(createBookingWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                     workflowExecutionTimeout: '5m',
                 });
 
@@ -276,16 +262,15 @@ export const bookingRouter = router({
      */
     checkIn: publicProcedure
         .input(z.object({ qrCode: z.string() }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `booking-checkin-${input.qrCode}-${Date.now()}`;
+                const workflowId = `booking-checkin-${input.qrCode}`;
 
-                const booking = await client.workflow.execute(checkInWithQRCodeWorkflow, {
+                const booking = await ctx.temporal.workflow.execute(checkInWithQRCodeWorkflow, {
                     args: [input.qrCode],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                     workflowExecutionTimeout: '2m',
                 });
 
@@ -315,16 +300,15 @@ export const bookingRouter = router({
             bookingId: z.string().uuid(),
             reason: z.string().optional(),
         }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                const client = await getTemporalClient();
-                const workflowId = `booking-cancel-${input.bookingId}-${Date.now()}`;
+                const workflowId = `booking-cancel-${input.bookingId}`;
 
-                const booking = await client.workflow.execute(cancelBookingWorkflow, {
+                const booking = await ctx.temporal.workflow.execute(cancelBookingWorkflow, {
                     args: [input.bookingId, input.reason],
-                    taskQueue: 'default',
+                    taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
                     workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                     workflowExecutionTimeout: '2m',
                 });
 

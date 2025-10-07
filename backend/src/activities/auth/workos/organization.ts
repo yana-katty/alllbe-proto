@@ -272,37 +272,3 @@ export const listWorkosOrganizations = (client: WorkOS) =>
             throw mapWorkosError(error);
         }
     };
-
-// ============================================
-// Temporal Activity 用のラッパー関数
-// ============================================
-
-/**
- * WorkOS Organization 作成 Activity (Temporal用)
- * 
- * @throws ApplicationFailure - WorkOS API エラー
- */
-export async function createWorkosOrganizationActivity(
-    input: { name: string; domains: string[] }
-): Promise<WorkosOrganization> {
-    const { createWorkosClient, getWorkosConfigFromEnv } = await import('./workosClient');
-    const config = getWorkosConfigFromEnv();
-    const client = createWorkosClient(config);
-
-    return await createWorkosOrganization(client)(input);
-}
-
-/**
- * WorkOS Organization 削除 Activity (Temporal用)
- * 
- * @throws ApplicationFailure - WorkOS API エラー
- */
-export async function deleteWorkosOrganizationActivity(
-    organizationId: string
-): Promise<boolean> {
-    const { createWorkosClient, getWorkosConfigFromEnv } = await import('./workosClient');
-    const config = getWorkosConfigFromEnv();
-    const client = createWorkosClient(config);
-
-    return await deleteWorkosOrganization(client)(organizationId);
-}

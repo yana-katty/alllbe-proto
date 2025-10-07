@@ -93,12 +93,12 @@ export const endUserRouter = router({
      */
     create: publicProcedure
         .input(endUserCreateInputSchema)
-        .mutation(async ({ input }) => {
-            const client = createTemporalClient();
+        .mutation(async ({ input, ctx }) => {
+            // Use ctx.temporal instead
 
             try {
                 const workflowId = crypto.randomUUID();
-                const handle = await client.workflow.signalWithStart('createEndUserWorkflow', {
+                const handle = await ctx.temporal.workflow.signalWithStart('createEndUserWorkflow', {
                     workflowId,
                     ...defaultWorkflowOptions,
                     args: [input],
@@ -127,13 +127,13 @@ export const endUserRouter = router({
             userId: z.string(),
             updates: endUserUpdateInputSchema,
         }))
-        .mutation(async ({ input }) => {
-            const client = createTemporalClient();
+        .mutation(async ({ input, ctx }) => {
+            // Use ctx.temporal instead
 
             try {
                 const workflowId = `user-${input.userId}`;
 
-                const handle = await client.workflow.signalWithStart('updateEndUserWorkflow', {
+                const handle = await ctx.temporal.workflow.signalWithStart('updateEndUserWorkflow', {
                     workflowId,
                     ...defaultWorkflowOptions,
                     args: [{
@@ -165,13 +165,13 @@ export const endUserRouter = router({
         .input(z.object({
             userId: z.string(),
         }))
-        .mutation(async ({ input }) => {
-            const client = createTemporalClient();
+        .mutation(async ({ input, ctx }) => {
+            // Use ctx.temporal instead
 
             try {
                 const workflowId = `user-${input.userId}`;
 
-                const handle = await client.workflow.start('deleteEndUserWorkflow', {
+                const handle = await ctx.temporal.workflow.start('deleteEndUserWorkflow', {
                     workflowId,
                     ...defaultWorkflowOptions,
                     args: [{ auth0_user_id: input.userId }],
@@ -195,16 +195,16 @@ export const endUserRouter = router({
      */
     get: publicProcedure
         .input(endUserLookupInputSchema)
-        .query(async ({ input }) => {
+        .query(async ({ input, ctx }) => {
             try {
                 // TODO: Activityを直接呼び出すためのClientを実装
                 // 現在はWorkflow経由だが、読み取り専用操作なのでActivityの直接呼び出しに変更予定
-                const client = createTemporalClient();
+                // Use ctx.temporal instead
 
                 const identifier = input.auth0_user_id || input.platform_user_id || input.email || '';
                 const workflowId = `user-get-${identifier}`;
 
-                const handle = await client.workflow.start('getEndUserWorkflow', {
+                const handle = await ctx.temporal.workflow.start('getEndUserWorkflow', {
                     workflowId,
                     ...defaultWorkflowOptions,
                     args: [input],

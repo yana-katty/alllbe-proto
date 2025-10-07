@@ -2,6 +2,26 @@
 
 このドキュメントでは、backendのE2Eテスト環境の構築と実行方法を説明します。
 
+## 実装状況（2025年10月7日更新）
+
+### ✅ 完全実装済み
+- **Organization & Brand 管理**: WorkOS連携、CRUD操作、CASCADE削除
+- **Experience 管理**: CRUD操作、ステータス管理（draft/published/ended/archived）、Workflow完全実装
+- **Experience Assets**: CRUD操作、Workflow実装済み、アクセス権限管理
+- **Booking システム**: 予約作成、QRコード入場、キャンセル
+- **EndUser 管理**: Auth0連携、ユーザーCRUD
+
+### 🚧 部分実装
+- **Payment**: Activity実装済み、Workflow/Actions/tRPC未実装
+
+### ✅ E2Eテスト
+- **依存パッケージ**: ✅ @trpc/client インストール済み
+- **シナリオ1**: ✅ 完成（Organization & Brand & Experience & ExperienceAsset ライフサイクル）
+- **シナリオ2-4**: 未実装
+- **クリーンアップスクリプト**: ✅ シナリオ1に実装済み
+
+詳細は [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) を参照してください。
+
 ## アーキテクチャ
 
 ```
@@ -443,7 +463,33 @@ npm run db:migrate
 
 ## 次のステップ
 
-1. **自動テストの実装**: vitest + supertest でE2Eテストを自動化
+### 優先度順の実装タスク
+
+1. **Experience Asset Workflow の実装** 🔴 高優先度
+   - ファイル: `backend/src/workflows/experienceAsset.ts`
+   - 関連コンテンツの作成・更新・削除
+
+2. **E2Eテストシナリオの完成** 🟡 中優先度
+   - シナリオ2: Multi-tenant データ分離
+   - シナリオ3: プラン制限（Standard vs Enterprise）
+   - シナリオ4: Experience ライフサイクル
+
+3. **クリーンアップスクリプト** 🟡 中優先度
+   - WorkOS/Auth0 のゴミデータ自動削除
+   - テスト失敗時の復旧手順
+
+4. **Payment システム完全実装** 🟢 低優先度
+   - Workflow, Actions, tRPC Router の実装
+
+### 関連ドキュメント
+
+- [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) - 詳細な実装状況
+- [BUSINESS_VALIDATION.md](./BUSINESS_VALIDATION.md) - ビジネス要件検証ガイド
+- [シナリオ1](./scenarios/scenario1-org-brand-lifecycle.ts) - Organization & Brand ライフサイクル
+
+### 自動テストへの移行（将来）
+
+1. **自動テストの実装**: vitest + @trpc/client でE2Eテストを自動化
 2. **CI/CD統合**: GitHub Actions で自動テスト実行
 3. **パフォーマンステスト**: 大量リクエスト時の動作確認
 4. **モニタリング**: Temporal UI + Winston ログでワークフロー監視

@@ -2,14 +2,23 @@
  * Experience tRPC Router
  * 
  * Read操作: Actionsを直接呼び出し
- * CUD操作: Workflowを使用（将来実装予定）
+ * CUD操作: Temporal Workflowを使用
  */
 
 import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { ApplicationFailure } from '@temporalio/common';
+import { WorkflowIdReusePolicy } from '@temporalio/client';
 import { getDatabase } from '../activities/db/connection';
+import {
+    createExperienceWorkflow,
+    updateExperienceWorkflow,
+    publishExperienceWorkflow,
+    endExperienceWorkflow,
+    archiveExperienceWorkflow,
+    deleteExperienceWorkflow,
+} from '../workflows/experience';
 import {
     createExperienceActions,
 } from '../actions/experience';
@@ -39,9 +48,6 @@ const experienceActions = createExperienceActions({
 });
 
 export const experienceRouter = router({
-    /**
-     * Experience取得 (ID指定)
-     */
     getById: publicProcedure
         .input(z.string().uuid())
         .query(async ({ input }) => {
@@ -55,33 +61,14 @@ export const experienceRouter = router({
                         cause: error,
                     });
                 }
-                throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to get experience',
+                    cause: error,
+                });
             }
         }),
 
-    /**
-     * Experience一覧取得（検索条件付き）
-     */
-    list: publicProcedure
-        .input(experienceQuerySchema)
-        .query(async ({ input }) => {
-            try {
-                return await experienceActions.listExperiences(input);
-            } catch (error) {
-                if (error instanceof ApplicationFailure) {
-                    throw new TRPCError({
-                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
-                        message: error.message,
-                        cause: error,
-                    });
-                }
-                throw error;
-            }
-        }),
-
-    /**
-     * Brand配下のExperience一覧取得
-     */
     listByBrand: publicProcedure
         .input(z.object({
             brandId: z.string().uuid(),
@@ -102,18 +89,26 @@ export const experienceRouter = router({
                         cause: error,
                     });
                 }
-                throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to list experiences',
+                    cause: error,
+                });
             }
         }),
 
-    /**
-     * Experience作成
-     */
     create: publicProcedure
         .input(experienceCreateSchema)
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await experienceActions.createExperience(input);
+                const workflowId = `exp-create-${input.brandId}`;
+                const handle = await ctx.temporal.workflow.start(createExperienceWorkflow, {
+                    args: [input],
+                    taskQueue: 'default',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({
@@ -122,21 +117,26 @@ export const experienceRouter = router({
                         cause: error,
                     });
                 }
-                throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to create experience',
+                    cause: error,
+                });
             }
         }),
 
-    /**
-     * Experience更新
-     */
     update: publicProcedure
-        .input(z.object({
-            id: z.string().uuid(),
-            data: experienceUpdateSchema,
-        }))
-        .mutation(async ({ input }) => {
+        .input(z.object({ id: z.string().uuid(), data: experienceUpdateSchema }))
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await experienceActions.updateExperience(input.id, input.data);
+                const workflowId = `exp-update-${input.id}`;
+                const handle = await ctx.temporal.workflow.start(updateExperienceWorkflow, {
+                    args: [input.id, input.data],
+                    taskQueue: 'default',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({
@@ -145,18 +145,54 @@ export const experienceRouter = router({
                         cause: error,
                     });
                 }
-                throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to update experience',
+                    cause: error,
+                });
             }
         }),
 
-    /**
-     * Experience削除
-     */
+    publish: publicProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ input, ctx }) => {
+            try {
+                const workflowId = `exp-publish-${input.id}`;
+                const handle = await ctx.temporal.workflow.start(publishExperienceWorkflow, {
+                    args: [input.id],
+                    taskQueue: 'default',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+                return await handle.result();
+            } catch (error) {
+                if (error instanceof ApplicationFailure) {
+                    throw new TRPCError({
+                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
+                        message: error.message,
+                        cause: error,
+                    });
+                }
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to publish experience',
+                    cause: error,
+                });
+            }
+        }),
+
     delete: publicProcedure
         .input(z.string().uuid())
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
             try {
-                return await experienceActions.deleteExperience(input);
+                const workflowId = `exp-delete-${input}`;
+                const handle = await ctx.temporal.workflow.start(deleteExperienceWorkflow, {
+                    args: [input],
+                    taskQueue: 'default',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+                return await handle.result();
             } catch (error) {
                 if (error instanceof ApplicationFailure) {
                     throw new TRPCError({
@@ -165,7 +201,11 @@ export const experienceRouter = router({
                         cause: error,
                     });
                 }
-                throw error;
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to delete experience',
+                    cause: error,
+                });
             }
         }),
 });
