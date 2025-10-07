@@ -2,6 +2,8 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Header } from "@/components/shared/header"
+import { Footer } from "@/components/shared/footer"
 import {
   Calendar,
   Clock,
@@ -95,38 +97,7 @@ export default function MyExperiencesPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-8">
-              <Link href="/" className="text-xl font-bold">
-                i'll be
-              </Link>
-              <div className="hidden md:flex items-center gap-6">
-                <Link href="/my-experiences" className="text-sm font-medium text-black border-b-2 border-black pb-1">
-                  マイ体験
-                </Link>
-                <Link href="/" className="text-sm font-medium text-gray-600 hover:text-black transition-colors">
-                  体験を探す
-                </Link>
-                <Link
-                  href="/community"
-                  className="text-sm font-medium text-gray-600 hover:text-black transition-colors"
-                >
-                  コミュニティ
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link href="/profile">
-                <Button variant="ghost" size="sm">
-                  プロフィール
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Header />
 
       {/* Hero Section - Next Experience */}
       <section className="relative h-[70vh] min-h-[600px] overflow-hidden">
@@ -327,6 +298,8 @@ export default function MyExperiencesPage() {
           </Button>
         </div>
       </section>
+
+      <Footer />
     </div>
   )
 }
