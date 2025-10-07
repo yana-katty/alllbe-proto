@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { ApplicationFailure } from '@temporalio/common';
 
 /**
  * Auth0 User Profile - Auth0 が管理するエンドユーザーの完全なプロフィール情報
@@ -206,19 +207,50 @@ export type Auth0TokenInfo = z.infer<typeof auth0TokenInfoSchema>;
 
 /**
  * Auth0 Error Types - Auth0 API エラー管理
+ * ApplicationFailure.type として使用される
  */
-export enum Auth0ErrorCode {
-    USER_NOT_FOUND = 'USER_NOT_FOUND',
-    EMAIL_ALREADY_EXISTS = 'EMAIL_ALREADY_EXISTS',
-    INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
-    TOKEN_EXPIRED = 'TOKEN_EXPIRED',
-    INSUFFICIENT_SCOPE = 'INSUFFICIENT_SCOPE',
-    API_ERROR = 'API_ERROR',
-    VALIDATION_ERROR = 'VALIDATION_ERROR',
+export enum Auth0ErrorType {
+    USER_NOT_FOUND = 'AUTH0_USER_NOT_FOUND',
+    EMAIL_ALREADY_EXISTS = 'AUTH0_EMAIL_ALREADY_EXISTS',
+    INVALID_CREDENTIALS = 'AUTH0_INVALID_CREDENTIALS',
+    TOKEN_EXPIRED = 'AUTH0_TOKEN_EXPIRED',
+    INSUFFICIENT_SCOPE = 'AUTH0_INSUFFICIENT_SCOPE',
+    API_ERROR = 'AUTH0_API_ERROR',
+    VALIDATION_ERROR = 'AUTH0_VALIDATION_ERROR',
 }
 
-export interface Auth0Error {
-    code: Auth0ErrorCode;
+/**
+ * Auth0 エラー情報
+ * ApplicationFailure 生成に必要な情報を構造化
+ */
+export interface Auth0ErrorInfo {
+    type: Auth0ErrorType;
     message: string;
     details?: unknown;
+    nonRetryable?: boolean;
 }
+
+/**
+ * Auth0 エラー作成ファクトリ
+ * 
+ * @param info - エラー情報
+ * @returns ApplicationFailure インスタンス
+ * 
+ * @example
+ * ```typescript
+ * throw createAuth0Error({
+ *   type: Auth0ErrorType.EMAIL_ALREADY_EXISTS,
+ *   message: `Email already exists: ${email}`,
+ *   details: { email },
+ *   nonRetryable: true,
+ * });
+ * ```
+ */
+export const createAuth0Error = (info: Auth0ErrorInfo): ApplicationFailure => {
+    return ApplicationFailure.create({
+        message: info.message,
+        type: info.type,
+        details: info.details ? [info.details] : undefined,
+        nonRetryable: info.nonRetryable ?? true,
+    });
+};

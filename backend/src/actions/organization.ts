@@ -10,18 +10,17 @@
  * - 統合されたデータを返す
  * 
  * 依存注入パターンにより、テスト時にActivity関数をモック可能
+ * エラーは throw されるため、呼び出し側で try-catch でハンドリング
  */
 
 import type { Organization } from '../activities/db/schema';
 import type { OrganizationQueryInput } from '../activities/db/models/organization';
 import type { WorkosOrganization } from '../activities/auth/workos/types';
 
-// Activity関数の型定義
-type GetOrganizationByIdActivity = (id: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
-type ListOrganizationsActivity = (params: OrganizationQueryInput) => Promise<{ ok: true; value: Organization[] } | { ok: false; error: any }>;
-
-// WorkOS Activity関数の型定義
-type GetWorkosOrganizationActivity = (organizationId: string) => Promise<{ ok: true; value: WorkosOrganization } | { ok: false; error: any }>;
+// Activity関数の型定義（try-catchベース）
+type GetOrganizationByIdActivity = (id: string) => Promise<Organization | null>;
+type ListOrganizationsActivity = (params: OrganizationQueryInput) => Promise<Organization[]>;
+type GetWorkosOrganizationActivity = (organizationId: string) => Promise<WorkosOrganization>;
 
 // 依存関数の型定義
 interface OrganizationActionDeps {
@@ -40,32 +39,26 @@ export interface OrganizationWithWorkos extends Organization {
 
 /**
  * Organization取得 (ID指定) - DB と WorkOS を統合
- * 依存注入により、テスト時にモックを差し込める
+ * 
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
  */
 export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'getOrganizationByIdActivity' | 'getWorkosOrganizationActivity'>) =>
     async (id: string): Promise<OrganizationWithWorkos | null> => {
-        const result = await deps.getOrganizationByIdActivity(id);
+        // DB から Organization を取得（エラーは throw される）
+        const org = await deps.getOrganizationByIdActivity(id);
 
-        if (!result.ok) {
-            throw new Error(`Failed to get organization: ${result.error.message}`);
-        }
-
-        if (!result.value) {
+        if (!org) {
             return null;
         }
-
-        const org = result.value;
 
         // id が WorkOS Organization ID なので、直接 WorkOS から情報を取得
         if (deps.getWorkosOrganizationActivity) {
             try {
-                const workosResult = await deps.getWorkosOrganizationActivity(org.id);
-                if (workosResult.ok) {
-                    return {
-                        ...org,
-                        workosData: workosResult.value,
-                    };
-                }
+                const workosData = await deps.getWorkosOrganizationActivity(org.id);
+                return {
+                    ...org,
+                    workosData,
+                };
             } catch (error) {
                 // WorkOS からの取得失敗はエラーにせず、DB データのみ返す
                 console.warn('Failed to fetch WorkOS organization data', { organizationId: org.id, error });
@@ -77,33 +70,29 @@ export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'getOrgan
 
 /**
  * Organization一覧取得 - DB と WorkOS を統合
+ * 
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
  */
 export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrganizationsActivity' | 'getWorkosOrganizationActivity'>) =>
     async (params: OrganizationQueryInput): Promise<OrganizationWithWorkos[]> => {
-        const result = await deps.listOrganizationsActivity(params);
-
-        if (!result.ok) {
-            throw new Error(`Failed to list organizations: ${result.error.message}`);
-        }
-
-        const organizations = result.value;
+        // DB から Organizations を取得（エラーは throw される）
+        const organizations = await deps.listOrganizationsActivity(params);
 
         // 各 Organization に対して WorkOS データを取得（並列処理）
         if (deps.getWorkosOrganizationActivity) {
             const enrichedOrganizations = await Promise.all(
                 organizations.map(async (org) => {
                     try {
-                        const workosResult = await deps.getWorkosOrganizationActivity!(org.id); // id が WorkOS Organization ID
-                        if (workosResult.ok) {
-                            return {
-                                ...org,
-                                workosData: workosResult.value,
-                            };
-                        }
+                        const workosData = await deps.getWorkosOrganizationActivity!(org.id);
+                        return {
+                            ...org,
+                            workosData,
+                        };
                     } catch (error) {
+                        // 個別の WorkOS 取得失敗は無視
                         console.warn('Failed to fetch WorkOS organization data', { organizationId: org.id, error });
+                        return org;
                     }
-                    return org;
                 })
             );
             return enrichedOrganizations;

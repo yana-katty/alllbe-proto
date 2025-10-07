@@ -16,8 +16,6 @@ import {
     listOrganizations
 } from './organization';
 import type { Organization } from '../activities/db/schema';
-import type { WorkosOrganization } from '../activities/auth/workos/types';
-import { OrganizationErrorCode } from '../activities/db/models/organization';
 
 describe('Organization Actions', () => {
     describe('getOrganizationById', () => {
@@ -29,10 +27,8 @@ describe('Organization Actions', () => {
                 updatedAt: new Date(),
             };
 
-            const mockActivity = vi.fn().mockResolvedValue({
-                ok: true,
-                value: mockOrg,
-            });
+            // ApplicationFailure パターン: Activity は直接値を返す
+            const mockActivity = vi.fn().mockResolvedValue(mockOrg);
 
             const action = getOrganizationById({ getOrganizationByIdActivity: mockActivity });
             const result = await action('org_workos_123');
@@ -42,10 +38,8 @@ describe('Organization Actions', () => {
         });
 
         it('should return null when organization does not exist', async () => {
-            const mockActivity = vi.fn().mockResolvedValue({
-                ok: true,
-                value: null,
-            });
+            // ApplicationFailure パターン: null を直接返す
+            const mockActivity = vi.fn().mockResolvedValue(null);
 
             const action = getOrganizationById({ getOrganizationByIdActivity: mockActivity });
             const result = await action('non-existent');
@@ -65,10 +59,8 @@ describe('Organization Actions', () => {
                 },
             ];
 
-            const mockActivity = vi.fn().mockResolvedValue({
-                ok: true,
-                value: mockOrgs,
-            });
+            // ApplicationFailure パターン: Activity は直接配列を返す
+            const mockActivity = vi.fn().mockResolvedValue(mockOrgs);
 
             const action = listOrganizations({ listOrganizationsActivity: mockActivity });
             const result = await action({ limit: 20, offset: 0 });

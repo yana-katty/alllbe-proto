@@ -14,7 +14,6 @@ import { proxyActivities, ApplicationFailure, log } from '@temporalio/workflow';
 import type * as workosActivities from '../activities/auth/workos';
 import type { Organization } from '../activities/db/schema';
 import type { OrganizationCreateInput, createOrganizationActivities } from '../activities/db/models/organization';
-import { Result } from 'neverthrow';
 
 // DB Activity Proxy - ファクトリ関数の戻り値型を使用
 const { removeOrganization, insertOrganization } = proxyActivities<ReturnType<typeof createOrganizationActivities>>({
@@ -76,6 +75,8 @@ async function compensate(compensations: Compensation[]): Promise<void> {
  * 2. DB Organization 作成（WorkOS Organization ID を id として使用）
  * 3. 管理者ユーザーを WorkOS に作成（オプション）
  * 4. 失敗時は作成済みリソースを削除
+ * 
+ * @throws ApplicationFailure - Activity呼び出しのエラーはそのまま伝播
  */
 export async function createOrganizationWithWorkosWorkflow(
     input: {
@@ -93,27 +94,19 @@ export async function createOrganizationWithWorkosWorkflow(
     try {
         // Step 1: WorkOS Organization 作成
         log.info('Creating WorkOS Organization', { name: input.name });
-        const workosOrgResult = await createWorkosOrganizationActivity({
+        const workosOrg = await createWorkosOrganizationActivity({
             name: input.name,
             domains: input.domains,
         });
-        console.log("WorkOS Organization creation result:", workosOrgResult);
+        console.log("WorkOS Organization creation result:", workosOrg);
 
-        if (!workosOrgResult.ok) {
-            throw new ApplicationFailure(
-                `WorkOS Organization creation failed: ${workosOrgResult.error.message}`,
-                workosOrgResult.error.code,
-                false
-            );
-        }
-
-        const workosOrg = workosOrgResult.value;
         compensations.unshift({
             message: `Deleting WorkOS Organization: ${workosOrg.id}`,
             fn: async () => {
-                const deleteResult = await deleteWorkosOrganizationActivity(workosOrg.id);
-                if (!deleteResult.ok) {
-                    log.error('Failed to delete WorkOS Organization', { error: deleteResult.error });
+                try {
+                    await deleteWorkosOrganizationActivity(workosOrg.id);
+                } catch (error) {
+                    log.error('Failed to delete WorkOS Organization', { error });
                 }
             },
         });
@@ -123,24 +116,16 @@ export async function createOrganizationWithWorkosWorkflow(
         const dbOrgInput: OrganizationCreateInput = {
             id: workosOrg.id, // WorkOS Organization ID を主キーとして使用
         };
-        const dbOrgResult = await insertOrganization(dbOrgInput);
-        console.log("DB Organization creation result:", dbOrgResult.);
+        const dbOrg = await insertOrganization(dbOrgInput);
+        console.log("DB Organization creation result:", dbOrg);
 
-        if (new Result(dbOrgResult).isErr()) {
-            throw new ApplicationFailure(
-                `DB Organization creation failed: ${dbOrgResult.error.message}`,
-                dbOrgResult.error.code,
-                false
-            );
-        }
-
-        const dbOrg = dbOrgResult.value;
         compensations.unshift({
             message: `Deleting DB Organization: ${dbOrg.id}`,
             fn: async () => {
-                const deleteResult = await removeOrganization(dbOrg.id);
-                if (deleteResult.isErr()) {
-                    log.error('Failed to delete DB Organization', { error: deleteResult.error });
+                try {
+                    await removeOrganization(dbOrg.id);
+                } catch (error) {
+                    log.error('Failed to delete DB Organization', { error });
                 }
             },
         });
@@ -148,27 +133,25 @@ export async function createOrganizationWithWorkosWorkflow(
         // Step 3: 管理者ユーザーを WorkOS に作成（オプション）
         if (input.adminUser) {
             log.info('Creating WorkOS admin user', { email: input.adminUser.email });
-            const userResult = await createWorkosUserActivity({
-                email: input.adminUser.email,
-                firstName: input.adminUser.firstName,
-                lastName: input.adminUser.lastName,
-                emailVerified: false,
-            });
-
-            if (!userResult.ok) {
-                log.warn('Failed to create admin user, but continuing', { error: userResult.error });
-            } else {
-                const user = userResult.value;
-
-                // Organization に関連付け
-                const membershipResult = await createWorkosOrganizationMembershipActivity({
-                    userId: user.id,
-                    organizationId: workosOrg.id,
+            try {
+                const user = await createWorkosUserActivity({
+                    email: input.adminUser.email,
+                    firstName: input.adminUser.firstName,
+                    lastName: input.adminUser.lastName,
+                    emailVerified: false,
                 });
 
-                if (!membershipResult.ok) {
-                    log.warn('Failed to create organization membership, but continuing', { error: membershipResult.error });
+                // Organization に関連付け
+                try {
+                    await createWorkosOrganizationMembershipActivity({
+                        userId: user.id,
+                        organizationId: workosOrg.id,
+                    });
+                } catch (error) {
+                    log.warn('Failed to create organization membership, but continuing', { error });
                 }
+            } catch (error) {
+                log.warn('Failed to create admin user, but continuing', { error });
             }
         }
 

@@ -10,34 +10,15 @@
  * @see https://docs.temporal.io/develop/typescript/testing-suite
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
 import { Worker } from '@temporalio/worker';
+import { ApplicationFailure } from '@temporalio/common';
 import { randomUUID } from 'crypto';
-import { ok, err, Result } from 'neverthrow';
 import type { Organization } from '../activities/db/schema';
-import type {
-    OrganizationCreateInput,
-    OrganizationUpdateInput,
-    OrganizationError,
-} from '../activities/db/models/organization';
-import { OrganizationErrorCode } from '../activities/db/models/organization';
+import type { OrganizationCreateInput } from '../activities/db/models/organization';
+import { OrganizationErrorType } from '../activities/db/models/organization';
 import type { WorkosOrganization } from '../activities/auth/workos/types';
-
-/**
- * モック Activity の型定義
- */
-interface MockActivities {
-    // DB Activities: Promise<Result<T, E>> パターン
-    insertOrganization?: (input: OrganizationCreateInput) => Promise<Result<Organization, OrganizationError>>;
-    updateOrganization?: (id: string, patch: OrganizationUpdateInput) => Promise<Result<Organization | null, OrganizationError>>;
-    removeOrganization?: (id: string) => Promise<Result<boolean, OrganizationError>>;
-    // WorkOS Activities: Promise<{ok, value, error}> パターン
-    createWorkosOrganizationActivity?: (input: any) => Promise<{ ok: true; value: WorkosOrganization } | { ok: false; error: any }>;
-    deleteWorkosOrganizationActivity?: (id: string) => Promise<{ ok: true; value: boolean } | { ok: false; error: any }>;
-    createWorkosUserActivity?: (input: any) => Promise<{ ok: true; value: any } | { ok: false; error: any }>;
-    createWorkosOrganizationMembershipActivity?: (input: any) => Promise<{ ok: true; value: any } | { ok: false; error: any }>;
-}
 
 describe('Organization Workflows', () => {
     let testEnv: TestWorkflowEnvironment;
@@ -67,6 +48,7 @@ describe('Organization Workflows', () => {
 
     describe('createOrganizationWithWorkosWorkflow', () => {
         it('should create organization with WorkOS successfully', async () => {
+            // テストデータの準備
             const mockWorkosOrg: WorkosOrganization = {
                 id: 'workos-org-123',
                 name: 'Test Organization',
@@ -81,20 +63,24 @@ describe('Organization Workflows', () => {
             };
 
             const mockDBOrg: Organization = {
-                id: 'workos-org-123', // WorkOS Organization ID を主キーとして使用
+                id: 'workos-org-123',
                 isActive: true,
                 createdAt: new Date(),
                 updatedAt: new Date(),
             };
 
-            const mockActivities: MockActivities = {
-                createWorkosOrganizationActivity: async () => ({ ok: true, value: mockWorkosOrg }),
-                insertOrganization: async () => ok(mockDBOrg),
-                deleteWorkosOrganizationActivity: async () => ({ ok: true, value: true }),
-            };
+            // モックアクティビティの定義（vi.fn()を使用）
+            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
+            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
 
-            const worker = await createTestWorker(mockActivities);
+            const worker = await createTestWorker({
+                createWorkosOrganizationActivity,
+                insertOrganization,
+                deleteWorkosOrganizationActivity,
+            });
 
+            // Workflow実行
             const result = await worker.runUntil(
                 testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
                     workflowId: randomUUID(),
@@ -108,163 +94,221 @@ describe('Organization Workflows', () => {
                 })
             );
 
+            // アサーション: 戻り値の検証
             expect(result).toBeDefined();
-            expect(result.id).toBe('workos-org-123'); // WorkOS Organization ID が id として保存される
+            expect(result.id).toBe('workos-org-123');
+
+            // アサーション: モック関数が期待通りに呼ばれたか検証
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledWith({
+                name: 'Test Organization',
+                domains: ['example.com'],
+            });
+
+            expect(insertOrganization).toHaveBeenCalledTimes(1);
+            expect(insertOrganization).toHaveBeenCalledWith({
+                id: 'workos-org-123',
+            });
+
+            // 補償処理は呼ばれない（成功時）
+            expect(deleteWorkosOrganizationActivity).not.toHaveBeenCalled();
         });
 
-        // it('should compensate when DB creation fails after WorkOS creation', async () => {
-        //     const mockWorkosOrg: WorkosOrganization = {
-        //         id: 'workos-org-123',
-        //         name: 'Test Organization',
-        //         domains: [{ domain: 'example.com', state: 'verified' }],
-        //         created_at: '2024-01-01T00:00:00Z',
-        //         updated_at: '2024-01-01T00:00:00Z',
-        //         metadata: {
-        //             contact: {
-        //                 email: 'contact@example.com',
-        //             },
-        //         },
-        //     };
+        it('should compensate when DB creation fails after WorkOS creation', async () => {
+            // テストデータの準備
+            const mockWorkosOrg: WorkosOrganization = {
+                id: 'workos-org-123',
+                name: 'Test Organization',
+                domains: [{ domain: 'example.com', state: 'verified' }],
+                created_at: '2024-01-01T00:00:00Z',
+                updated_at: '2024-01-01T00:00:00Z',
+                metadata: {
+                    contact: {
+                        email: 'contact@example.com',
+                    },
+                },
+            };
 
-        //     let workosDeleted = false;
+            // モックアクティビティの定義（vi.fn()を使用）
+            // - WorkOS組織作成は成功
+            // - DB組織作成は失敗（DATABASE_ERROR）
+            // - 補償処理でWorkOS組織削除が呼ばれることを検証
+            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const insertOrganization = vi.fn().mockRejectedValue(
+                ApplicationFailure.create({
+                    message: 'Database error',
+                    type: OrganizationErrorType.DATABASE_ERROR,
+                    nonRetryable: false,
+                })
+            );
+            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
 
-        //     const mockActivities: MockActivities = {
-        //         createWorkosOrganizationActivity: async () => ({ ok: true, value: mockWorkosOrg }),
-        //         insertOrganization: async () => {
-        //             return err({
-        //                 code: OrganizationErrorCode.DATABASE,
-        //                 message: 'Database error',
-        //             });
-        //         },
-        //         deleteWorkosOrganizationActivity: async (id: string) => {
-        //             if (id === 'workos-org-123') {
-        //                 workosDeleted = true;
-        //             }
-        //             return { ok: true, value: true };
-        //         },
-        //     };
+            const worker = await createTestWorker({
+                createWorkosOrganizationActivity,
+                insertOrganization,
+                deleteWorkosOrganizationActivity,
+            });
 
-        //     const worker = await createTestWorker(mockActivities);
+            // Workflow実行（エラーが期待される）
+            await expect(
+                worker.runUntil(
+                    testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
+                        workflowId: randomUUID(),
+                        taskQueue: 'test',
+                        args: [
+                            {
+                                name: 'Test Organization',
+                                email: 'test@example.com',
+                                domains: ['example.com'],
+                            },
+                        ],
+                    })
+                )
+            ).rejects.toThrow();
 
-        //     await expect(
-        //         worker.runUntil(
-        //             testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
-        //                 workflowId: randomUUID(),
-        //                 taskQueue: 'test',
-        //                 args: [
-        //                     {
-        //                         name: 'Test Organization',
-        //                         email: 'test@example.com',
-        //                         domains: ['example.com'],
-        //                     },
-        //                 ],
-        //             })
-        //         )
-        //     ).rejects.toThrow();
+            // アサーション: モック関数が期待通りに呼ばれたか検証
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(insertOrganization).toHaveBeenCalledTimes(3); // 3回リトライ
 
-        //     // 補償処理が実行されたことを確認
-        //     expect(workosDeleted).toBe(true);
-        // });
+            // アサーション: 補償処理が実行されたことを確認
+            expect(deleteWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(deleteWorkosOrganizationActivity).toHaveBeenCalledWith('workos-org-123');
+        });
 
-        // it('should create organization with admin user', async () => {
-        //     const mockWorkosOrg: WorkosOrganization = {
-        //         id: 'workos-org-123',
-        //         name: 'Test Organization',
-        //         domains: [{ domain: 'example.com', state: 'verified' }],
-        //         created_at: '2024-01-01T00:00:00Z',
-        //         updated_at: '2024-01-01T00:00:00Z',
-        //         metadata: {
-        //             contact: {
-        //                 email: 'contact@example.com',
-        //             },
-        //         },
-        //     };
+        it('should create organization with admin user', async () => {
+            // テストデータの準備
+            const mockWorkosOrg: WorkosOrganization = {
+                id: 'workos-org-123',
+                name: 'Test Organization',
+                domains: [{ domain: 'example.com', state: 'verified' }],
+                created_at: '2024-01-01T00:00:00Z',
+                updated_at: '2024-01-01T00:00:00Z',
+                metadata: {
+                    contact: {
+                        email: 'contact@example.com',
+                    },
+                },
+            };
 
-        //     const mockUser = {
-        //         id: 'user-123',
-        //         email: 'admin@example.com',
-        //         firstName: 'Admin',
-        //         lastName: 'User',
-        //     };
+            const mockDBOrg: Organization = {
+                id: 'workos-org-123',
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
 
-        //     let userCreated = false;
-        //     let membershipCreated = false;
+            const mockUser = {
+                id: 'user-123',
+                email: 'admin@example.com',
+                firstName: 'Admin',
+                lastName: 'User',
+            };
 
-        //     const mockActivities: MockActivities = {
-        //         createWorkosOrganizationActivity: async () => ({ ok: true, value: mockWorkosOrg }),
-        //         insertOrganization: async (input: OrganizationCreateInput) => {
-        //             return ok({
-        //                 id: input.id, // 新スキーマ: WorkOS Organization ID
-        //                 isActive: true,
-        //                 createdAt: new Date(),
-        //                 updatedAt: new Date(),
-        //             });
-        //         },
-        //         createWorkosUserActivity: async () => {
-        //             userCreated = true;
-        //             return { ok: true, value: mockUser };
-        //         },
-        //         createWorkosOrganizationMembershipActivity: async () => {
-        //             membershipCreated = true;
-        //             return { ok: true, value: { id: 'membership-123' } };
-        //         },
-        //         deleteWorkosOrganizationActivity: async () => ({ ok: true, value: true }),
-        //     };
+            const mockMembership = {
+                id: 'membership-123',
+            };
 
-        //     const worker = await createTestWorker(mockActivities);
+            // モックアクティビティの定義（vi.fn()を使用）
+            // - WorkOS組織作成成功
+            // - DB組織作成成功
+            // - 管理者ユーザー作成成功
+            // - 組織メンバーシップ作成成功
+            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
+            const createWorkosUserActivity = vi.fn().mockResolvedValue(mockUser);
+            const createWorkosOrganizationMembershipActivity = vi.fn().mockResolvedValue(mockMembership);
+            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
 
-        //     const result = await worker.runUntil(
-        //         testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
-        //             workflowId: randomUUID(),
-        //             taskQueue: 'test',
-        //             args: [
-        //                 {
-        //                     name: 'Test Organization',
-        //                     domains: ['example.com'],
-        //                     adminUser: {
-        //                         email: 'admin@example.com',
-        //                         firstName: 'Admin',
-        //                         lastName: 'User',
-        //                     },
-        //                 },
-        //             ],
-        //         })
-        //     );
+            const worker = await createTestWorker({
+                createWorkosOrganizationActivity,
+                insertOrganization,
+                createWorkosUserActivity,
+                createWorkosOrganizationMembershipActivity,
+                deleteWorkosOrganizationActivity,
+            });
 
-        //     expect(result).toBeDefined();
-        //     expect(userCreated).toBe(true);
-        //     expect(membershipCreated).toBe(true);
-        // });
+            // Workflow実行（管理者ユーザー付き）
+            const result = await worker.runUntil(
+                testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
+                    workflowId: randomUUID(),
+                    taskQueue: 'test',
+                    args: [
+                        {
+                            name: 'Test Organization',
+                            domains: ['example.com'],
+                            adminUser: {
+                                email: 'admin@example.com',
+                                firstName: 'Admin',
+                                lastName: 'User',
+                            },
+                        },
+                    ],
+                })
+            );
 
-        // it('should fail when WorkOS organization creation fails', async () => {
-        //     const mockActivities: MockActivities = {
-        //         createWorkosOrganizationActivity: async () => {
-        //             return {
-        //                 ok: false, error: {
-        //                     code: OrganizationErrorCode.INVALID,
-        //                     message: 'Invalid domain',
-        //                 }
-        //             };
-        //         },
-        //     };
+            // アサーション: 戻り値の検証
+            expect(result).toBeDefined();
+            expect(result.id).toBe('workos-org-123');
 
-        //     const worker = await createTestWorker(mockActivities);
+            // アサーション: 各モック関数が期待通りに呼ばれたか検証
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(insertOrganization).toHaveBeenCalledTimes(1);
 
-        //     await expect(
-        //         worker.runUntil(
-        //             testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
-        //                 workflowId: randomUUID(),
-        //                 taskQueue: 'test',
-        //                 args: [
-        //                     {
-        //                         name: 'Test Organization',
-        //                         domains: ['invalid'],
-        //                     },
-        //                 ],
-        //             })
-        //         )
-        //     ).rejects.toThrow();
-        // });
+            // 管理者ユーザー作成が呼ばれ、引数が正しいことを確認
+            expect(createWorkosUserActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosUserActivity).toHaveBeenCalledWith({
+                email: 'admin@example.com',
+                firstName: 'Admin',
+                lastName: 'User',
+                emailVerified: false,
+            });
+
+            // メンバーシップ作成が呼ばれ、引数が正しいことを確認
+            expect(createWorkosOrganizationMembershipActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganizationMembershipActivity).toHaveBeenCalledWith({
+                organizationId: 'workos-org-123',
+                userId: 'user-123',
+            });
+        });
+
+        it('should fail when WorkOS organization creation fails', async () => {
+            // モックアクティビティの定義（vi.fn()を使用）
+            // - WorkOS組織作成は失敗（INVALID_INPUTエラー）
+            const createWorkosOrganizationActivity = vi.fn().mockRejectedValue(
+                ApplicationFailure.create({
+                    message: 'Invalid domain',
+                    type: OrganizationErrorType.INVALID_INPUT,
+                    nonRetryable: true,
+                })
+            );
+
+            const worker = await createTestWorker({
+                createWorkosOrganizationActivity,
+            });
+
+            // Workflow実行（エラーが期待される）
+            await expect(
+                worker.runUntil(
+                    testEnv.client.workflow.execute('createOrganizationWithWorkosWorkflow', {
+                        workflowId: randomUUID(),
+                        taskQueue: 'test',
+                        args: [
+                            {
+                                name: 'Test Organization',
+                                domains: ['invalid'],
+                            },
+                        ],
+                    })
+                )
+            ).rejects.toThrow();
+
+            // アサーション: モック関数が呼ばれたか検証
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganizationActivity).toHaveBeenCalledWith({
+                name: 'Test Organization',
+                domains: ['invalid'],
+            });
+        });
 
 
     })

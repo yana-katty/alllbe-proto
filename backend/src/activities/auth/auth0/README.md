@@ -139,20 +139,25 @@ const { getAuth0User, createAuth0User } = proxyActivities<typeof activities>({
 });
 
 export async function createEndUserWorkflow(input: CreateEndUserInput) {
-    // Auth0 にユーザーを作成
-    const auth0Result = await createAuth0User(input);
-    
-    if (auth0Result.isErr()) {
-        throw new ApplicationFailure(auth0Result.error.message, auth0Result.error.code);
+    try {
+        // Auth0 にユーザーを作成
+        const auth0User = await createAuth0User(input);
+        
+        // DB に Auth0 User ID のみを保存
+        const dbResult = await createDbUser({
+            auth0UserId: auth0User.user_id,
+            email: auth0User.email,
+        });
+        
+        return dbResult;
+    } catch (error) {
+        // ApplicationFailure はそのまま再スロー
+        if (error instanceof ApplicationFailure) {
+            throw error;
+        }
+        // 予期しないエラーの場合
+        throw new ApplicationFailure('Unexpected error in workflow', 'WORKFLOW_ERROR');
     }
-    
-    // DB に Auth0 User ID のみを保存
-    const dbResult = await createDbUser({
-        auth0UserId: auth0Result.value.user_id,
-        email: auth0Result.value.email,
-    });
-    
-    return dbResult;
 }
 ```
 
@@ -162,15 +167,15 @@ export async function createEndUserWorkflow(input: CreateEndUserInput) {
 
 すべてカリー化された関数として実装されています。
 
-| Activity | 説明 | 依存注入 | 入力 | 出力 |
-|----------|------|----------|------|------|
-| `getAuth0User` | Auth0からユーザー情報を取得 | `(client)` | `userId: string` | `Auth0UserProfile` |
-| `getAuth0UserSummary` | 最小限のユーザー情報を取得 | `(client)` | `userId: string` | `Auth0UserSummary` |
-| `createAuth0User` | Auth0にユーザーを作成 | `(client, connectionName)` | `Auth0UserCreateInput` | `Auth0UserProfile` |
-| `updateAuth0User` | Auth0のユーザー情報を更新 | `(client)` | `userId, Auth0UserUpdateInput` | `Auth0UserProfile` |
-| `deleteAuth0User` | Auth0からユーザーを削除 | `(client)` | `userId: string` | `void` |
-| `updateAuth0EmailVerification` | メール認証状態を更新 | `(client)` | `userId, emailVerified` | `Auth0UserProfile` |
-| `blockAuth0User` | ユーザーをブロック/アンブロック | `(client)` | `userId, blocked` | `Auth0UserProfile` |
+| Activity | 説明 | 依存注入 | 入力 | 出力 | エラー |
+|----------|------|----------|------|------|--------|
+| `getAuth0User` | Auth0からユーザー情報を取得 | `(client)` | `userId: string` | `Promise<Auth0UserProfile>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_API_ERROR` |
+| `getAuth0UserSummary` | 最小限のユーザー情報を取得 | `(client)` | `userId: string` | `Promise<Auth0UserSummary>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_API_ERROR` |
+| `createAuth0User` | Auth0にユーザーを作成 | `(client, connectionName)` | `Auth0UserCreateInput` | `Promise<Auth0UserProfile>` | `AUTH0_EMAIL_ALREADY_EXISTS`, `AUTH0_VALIDATION_ERROR`, `AUTH0_API_ERROR` |
+| `updateAuth0User` | Auth0のユーザー情報を更新 | `(client)` | `userId, Auth0UserUpdateInput` | `Promise<Auth0UserProfile>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_VALIDATION_ERROR`, `AUTH0_API_ERROR` |
+| `deleteAuth0User` | Auth0からユーザーを削除 | `(client)` | `userId: string` | `Promise<void>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_API_ERROR` |
+| `updateAuth0EmailVerification` | メール認証状態を更新 | `(client)` | `userId, emailVerified` | `Promise<Auth0UserProfile>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_API_ERROR` |
+| `blockAuth0User` | ユーザーをブロック/アンブロック | `(client)` | `userId, blocked` | `Promise<Auth0UserProfile>` | `AUTH0_USER_NOT_FOUND`, `AUTH0_API_ERROR` |
 
 ### 使用例
 
@@ -195,47 +200,86 @@ const worker = await Worker.create({
 
 ## エラーハンドリング
 
-全てのActivityは `ResultAsync<T, Auth0Error>` を返します：
+全てのActivityは ApplicationFailure を throw します：
 
 ```typescript
-export enum Auth0ErrorCode {
-    USER_NOT_FOUND = 'USER_NOT_FOUND',
-    EMAIL_ALREADY_EXISTS = 'EMAIL_ALREADY_EXISTS',
-    INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
-    TOKEN_EXPIRED = 'TOKEN_EXPIRED',
-    INSUFFICIENT_SCOPE = 'INSUFFICIENT_SCOPE',
-    API_ERROR = 'API_ERROR',
-    VALIDATION_ERROR = 'VALIDATION_ERROR',
+export enum Auth0ErrorType {
+    USER_NOT_FOUND = 'AUTH0_USER_NOT_FOUND',
+    EMAIL_ALREADY_EXISTS = 'AUTH0_EMAIL_ALREADY_EXISTS',
+    INVALID_CREDENTIALS = 'AUTH0_INVALID_CREDENTIALS',
+    TOKEN_EXPIRED = 'AUTH0_TOKEN_EXPIRED',
+    INSUFFICIENT_SCOPE = 'AUTH0_INSUFFICIENT_SCOPE',
+    API_ERROR = 'AUTH0_API_ERROR',
+    VALIDATION_ERROR = 'AUTH0_VALIDATION_ERROR',
 }
 
-export interface Auth0Error {
-    code: Auth0ErrorCode;
+export interface Auth0ErrorInfo {
+    type: Auth0ErrorType;
     message: string;
     details?: unknown;
+    nonRetryable?: boolean;
+}
+
+export const createAuth0Error = (info: Auth0ErrorInfo): ApplicationFailure => {
+    return ApplicationFailure.create({
+        message: info.message,
+        type: info.type,
+        details: info.details ? [info.details] : undefined,
+        nonRetryable: info.nonRetryable ?? true,
+    });
+};
+```
+
+### Workflow でのエラーハンドリング
+
+```typescript
+export async function createEndUserWorkflow(input: CreateEndUserInput) {
+    try {
+        const auth0User = await createAuth0User(input);
+        // ...
+    } catch (error) {
+        // ApplicationFailure をキャッチして適切にハンドリング
+        if (error instanceof ApplicationFailure) {
+            // error.type でエラー種別を判定
+            if (error.type === Auth0ErrorType.EMAIL_ALREADY_EXISTS) {
+                // 既に存在する場合の処理
+            }
+            throw error; // 再スロー
+        }
+        throw new ApplicationFailure('Unexpected error', 'WORKFLOW_ERROR');
+    }
 }
 ```
 
 ## GDPR 対応
 
-エンドユーザーの個人情報削除時は `deleteAuth0UserActivity` を使用：
+エンドユーザーの個人情報削除時は `deleteAuth0User` を使用：
 
 ```typescript
 // ユーザー削除（GDPR対応）
-const deleteResult = await deleteAuth0UserActivity(userId);
-
-if (deleteResult.isOk()) {
+try {
+    await deleteAuth0User(userId);
+    
     // Auth0 から個人情報が完全に削除される
     // DB側も auth0UserId を削除済みフラグに更新
     await markDbUserAsDeleted(userId);
+} catch (error) {
+    if (error instanceof ApplicationFailure && error.type === Auth0ErrorType.USER_NOT_FOUND) {
+        // 既に削除されている場合はスキップ
+        await markDbUserAsDeleted(userId);
+    } else {
+        throw error;
+    }
 }
 ```
 
 ## ベストプラクティス
 
 1. **個人情報は Auth0 で管理**: DBには Auth0 User ID のみを保存
-2. **Neverthrow で統一**: 全てのActivityは Result型を返す
+2. **ApplicationFailure を使用**: 全てのActivityは ApplicationFailure を throw
 3. **依存注入**: ManagementClient を引数として受け取る
-4. **エラーマッピング**: Auth0 API エラーを統一的な Auth0Error に変換
+4. **エラーマッピング**: Auth0 API エラーを統一的な ApplicationFailure に変換
+5. **try-catch でエラーハンドリング**: Workflow・Activity共に try-catch を使用
 
 ## 参考資料
 

@@ -5,12 +5,12 @@
  * CUD操作: Temporal Workflow Client を使用
  */
 
-import { router, publicProcedure } from './base';
+import { router, publicProcedure, mapTemporalErrorToTRPC } from './base';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { Connection, Client, WorkflowIdReusePolicy } from '@temporalio/client';
+import { ApplicationFailure } from '@temporalio/common';
 import {
-    createOrganizationWorkflow,
     createOrganizationWithWorkosWorkflow,
 } from '../workflows/organization';
 import { organizationCreateSchema, organizationUpdateSchema, organizationQuerySchema } from '../activities/db/models/organization';
@@ -92,34 +92,12 @@ export const organizationRouter = router({
     // ============================================
 
     /**
-     * Organizationを作成 (DB のみ)
-     */
-    create: publicProcedure
-        .input(organizationCreateSchema)
-        .mutation(async ({ input }) => {
-            try {
-                const client = await getTemporalClient();
-                const workflowId = `organization-create-${input.id}-${Date.now()}`;
-
-                const handle = await client.workflow.start(createOrganizationWorkflow, {
-                    args: [input],
-                    taskQueue: 'default',
-                    workflowId,
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
-                });
-
-                return await handle.result();
-            } catch (error) {
-                throw new TRPCError({
-                    code: 'INTERNAL_SERVER_ERROR',
-                    message: error instanceof Error ? error.message : 'Failed to create organization',
-                    cause: error,
-                });
-            }
-        }),
-
-    /**
      * Organizationを作成 (WorkOS連携版)
+     * 
+     * ApplicationFailure のエラーハンドリング例:
+     * - WorkOS Organization 作成失敗
+     * - DB Organization 作成失敗
+     * - 管理者ユーザー作成失敗（警告のみ）
      */
     createWithWorkos: publicProcedure
         .input(z.object({
@@ -145,6 +123,16 @@ export const organizationRouter = router({
 
                 return await handle.result();
             } catch (error) {
+                // ApplicationFailure のエラーを tRPC エラーコードにマッピング
+                if (error instanceof ApplicationFailure) {
+                    throw new TRPCError({
+                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
+                        message: error.message,
+                        cause: error,
+                    });
+                }
+
+                // その他のエラー
                 throw new TRPCError({
                     code: 'INTERNAL_SERVER_ERROR',
                     message: error instanceof Error ? error.message : 'Failed to create organization with WorkOS',

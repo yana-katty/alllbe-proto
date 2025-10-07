@@ -9,7 +9,7 @@ applyTo: "**"
 - **目的**: Location Based Entertainment (LBE) の B2B2C Experience 予約管理システム
 - **アーキテクチャ**: モノレポ構成 + 関数型プログラミング + 高階関数依存注入パターン
 - **主要技術**: 
-  - **Backend**: TypeScript, Hono, tRPC, Temporal, Drizzle ORM, Neon Database, neverthrow, vitest
+  - **Backend**: TypeScript, Hono, tRPC, Temporal, Drizzle ORM, Neon Database, vitest
   - **Frontend**: Next.js 14, React 18, TypeScript, tRPC Client
   - **Enterprise**: WorkOS (SSO, Organization 管理, Enterprise Ready 機能)
   - **Authentication**: Auth0 (エンドユーザー認証, ソーシャルログイン)
@@ -46,10 +46,15 @@ alllbe-proto/
 ```
 backend/
 ├── src/
+│   ├── shared/
+│   │   └── errors/         # カスタムエラークラス
 │   ├── activities/
-│   ├── workflows/
-│   ├── trpc/
-├── drizzle.config.ts  # Drizzle Kit設定
+│   │   ├── db/models/      # DB操作Activity
+│   │   └── auth/           # Auth0/WorkOS Activity
+│   ├── actions/            # Read操作（非Workflow）
+│   ├── workflows/          # Temporal Workflows (CUD)
+│   └── trpc/               # tRPC API handlers
+├── drizzle.config.ts       # Drizzle Kit設定
 ├── package.json
 └── tsconfig.json
 ```
@@ -64,54 +69,126 @@ backend/
 
 DB層、Domain層、API層を分離し、高階関数による依存注入でテスト容易性を実現：
 
-- **db/models層**: DB操作の純粋関数を提供、具体的なDB実装に依存しない
-- **domain層**: ビジネスロジック、必要な関数のみ`Pick<>`で受け取り
-- **trpc/handler**: tRPC層、Result型をHTTPエラーにマッピング
-- **temporal**: ワークフローとアクティビティ、domain層のロジックを再利用
+- **activities/db/models層**: DB操作の純粋関数、try-catchでApplicationFailureをthrow
+- **actions層**: Read操作を提供、必要な関数のみ`Pick<>`で受け取り
+- **workflows層**: Temporal Workflows、ApplicationFailureはそのまま伝播
+- **trpc/handler層**: tRPC層、ApplicationFailure.typeをHTTPステータスコードにマッピング
 
-### 実装パターン
+### エラーハンドリングパターン（ApplicationFailure ベース）
+
+#### 1. ErrorType 定義 + ファクトリ関数
 ```typescript
-// backend/src/shared/db/models/organization.ts - DB操作関数のファクトリ
-export const insertOrganization = (db: Database): InsertOrganization => 
-  (data: OrganizationCreateInput) => {
-    return ResultAsync.fromPromise(
-      db.insert(organizations).values({
-        name: data.name,
-        description: data.description ?? null,
-        email: data.email,
-        phone: data.phone ?? null,
-        website: data.website ?? null,
-        address: data.address ?? null,
-      }).returning().then(r => selectOrganizationSchema.parse(r[0])),
-      (error) => ({ code: OrganizationErrorCode.DATABASE, message: 'Insert failed', details: error })
-    );
-  };
+// backend/src/activities/db/models/organization.ts
+import { ApplicationFailure } from '@temporalio/common';
 
-// backend/src/shared/domain/organization.ts - ビジネスロジック
-export const createOrganization = (
-  deps: Pick<OrganizationActionDeps, 'insertOrganization' | 'findOrganizationByEmail'>
-) => async (input: OrganizationCreateInput): Promise<Result<OperationResult<any>, OrganizationError>> => {
-  const existsResult = await deps.findOrganizationByEmail(input.email);
-  if (existsResult.isErr()) return err(existsResult.error);
-  if (existsResult.value) return err({ code: OrganizationErrorCode.ALREADY_EXISTS, message: 'Email already in use' });
+/**
+ * Organization エラータイプ
+ * ApplicationFailure.type に直接使用される
+ */
+export enum OrganizationErrorType {
+    NOT_FOUND = 'ORGANIZATION_NOT_FOUND',
+    ALREADY_EXISTS = 'ORGANIZATION_ALREADY_EXISTS',
+    INVALID_INPUT = 'ORGANIZATION_INVALID_INPUT',
+    DATABASE_ERROR = 'ORGANIZATION_DATABASE_ERROR',
+    WORKOS_ERROR = 'ORGANIZATION_WORKOS_ERROR',
+}
 
-  const insertResult = await deps.insertOrganization(input);
-  if (insertResult.isErr()) return err(insertResult.error);
+/**
+ * Organization エラー情報
+ */
+export interface OrganizationErrorInfo {
+    type: OrganizationErrorType;
+    message: string;
+    details?: unknown;
+    nonRetryable?: boolean;
+}
 
-  const row = asOrg(insertResult.value);
-  if (row.isErr()) return err(row.error);
-  return ok({ data: row.value, message: 'Created' });
+/**
+ * Organization エラー作成ファクトリ
+ * 
+ * @example
+ * ```typescript
+ * throw createOrganizationError({
+ *   type: OrganizationErrorType.ALREADY_EXISTS,
+ *   message: `Organization already exists: ${id}`,
+ *   details: { organizationId: id },
+ *   nonRetryable: true,
+ * });
+ * ```
+ */
+export const createOrganizationError = (info: OrganizationErrorInfo): ApplicationFailure => {
+    return ApplicationFailure.create({
+        message: info.message,
+        type: info.type, // ErrorType を type に直接使用
+        details: info.details ? [info.details] : undefined,
+        nonRetryable: info.nonRetryable ?? true,
+    });
 };
+```
+
+#### 2. Activity層でのエラーハンドリング
+```typescript
+// backend/src/activities/db/models/organization.ts
+export const insertOrganization = (db: Database): InsertOrganization =>
+    async (data: OrganizationCreateInput): Promise<Organization> => {
+        try {
+            const existing = await db.select().from(organizations).where(eq(organizations.id, data.id)).limit(1);
+            if (existing.length > 0) {
+                throw createOrganizationError({
+                    type: OrganizationErrorType.ALREADY_EXISTS,
+                    message: `Organization already exists: ${data.id}`,
+                    details: { organizationId: data.id },
+                    nonRetryable: true,
+                });
+            }
+
+            const result = await db.insert(organizations).values({ id: data.id }).returning();
+            if (!result[0]) {
+                throw createOrganizationError({
+                    type: OrganizationErrorType.DATABASE_ERROR,
+                    message: 'Failed to insert: no rows returned',
+                    nonRetryable: false,
+                });
+            }
+
+            return selectOrganizationSchema.parse(result[0]);
+        } catch (error) {
+            if (error instanceof ApplicationFailure) {
+                throw error;
+            }
+            throw createOrganizationError({
+                type: OrganizationErrorType.DATABASE_ERROR,
+                message: 'Failed to insert organization',
+                details: error,
+                nonRetryable: false,
+            });
+        }
+    };
+```
+
+#### 3. Actions層でのエラーハンドリング
+```typescript
+// backend/src/actions/organization.ts
+/**
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
+ * @throws ApplicationFailure (type: ORGANIZATION_NOT_FOUND) - Organization が見つからない場合
+ */
+export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'findOrganizationByIdActivity'>) =>
+    async (id: string): Promise<Organization | null> => {
+        // ApplicationFailure はそのまま throw される（呼び出し側で catch）
+        const org = await deps.findOrganizationByIdActivity(id);
+        return org;
+    };
 ```
 
 ## テスト方針
 
 ### 単体テスト (Unit Tests)
-- **純粋関数を重点テスト**: ビジネスロジック関数（`createOrganization`, `updateOrganization`, `removeOrganization`等）を個別にテスト
-- **依存関数の最小化**: `Pick<OrganizationActionDeps, 'xxx' | 'yyy'>` で必要な関数のみモック
-- **Result型の確実な検証**: `result.isOk()` / `result.isErr()` でアサーション後、`_unsafeUnwrap()` / `_unsafeUnwrapErr()` で値を取得
-- **エラーパスの網羅**: 正常系・異常系（重複エラー、DB エラー、存在しないIDエラー等）を包括的にテスト
-- **OperationResultパターン**: Domain関数は `{ data, message }` 形式で結果を返す
+- **純粋関数を重点テスト**: ビジネスロジック関数を個別にテスト
+- **依存関数の最小化**: `Pick<Deps, 'xxx' | 'yyy'>` で必要な関数のみモック
+- **ApplicationFailure の検証**: `expect(() => fn()).rejects.toThrow(ApplicationFailure)`
+- **error.type の確認**: `error.type` で詳細なエラー種別を検証
+- **エラーパスの網羅**: 正常系・異常系を包括的にテスト
 
 ### テストツール
 - **vitest**: TypeScript ネイティブ、高速、モダンなテストランナー
@@ -121,37 +198,46 @@ export const createOrganization = (
 ### テスト例
 ```ts
 import { describe, it, expect, vi } from 'vitest';
-import { createOrganization } from '@/domain/organization';
-import { ok, err } from 'neverthrow';
-import { OrganizationErrorCode } from '@/db/models/organization';
+import { ApplicationFailure } from '@temporalio/common';
+import { insertOrganization, OrganizationErrorType } from '@/activities/db/models/organization';
 
-describe('createOrganization', () => {
-  it('should return ALREADY_EXISTS when email is duplicate', async () => {
-    const mockDeps = {
-      insertOrganization: vi.fn(),
-      findOrganizationByEmail: vi.fn().mockResolvedValue(ok({ id: 'existing-org' })),
+describe('insertOrganization', () => {
+  it('should throw ApplicationFailure with ALREADY_EXISTS type when organization exists', async () => {
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ id: 'existing-org' }]),
     };
-    const createLogic = createOrganization(mockDeps);
-    const result = await createLogic({ name: 'Test', email: 'duplicate@example.com' });
     
-    expect(result.isErr()).toBe(true);
-    expect(result._unsafeUnwrapErr().code).toBe(OrganizationErrorCode.ALREADY_EXISTS);
-    expect(mockDeps.findOrganizationByEmail).toHaveBeenCalledWith('duplicate@example.com');
+    const insertFn = insertOrganization(mockDb as any);
+    
+    await expect(insertFn({ id: 'org-1' })).rejects.toThrow(ApplicationFailure);
+    
+    try {
+      await insertFn({ id: 'org-1' });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApplicationFailure);
+      expect((error as ApplicationFailure).type).toBe(OrganizationErrorType.ALREADY_EXISTS);
+    }
   });
 
-  it('should create organization when email is unique', async () => {
-    const mockEntity = { id: 'org-1', email: 'test@example.com', name: 'Test Org' };
-    const mockDeps = {
-      insertOrganization: vi.fn().mockResolvedValue(ok(mockEntity)),
-      findOrganizationByEmail: vi.fn().mockResolvedValue(ok(null)),
+  it('should create organization when it does not exist', async () => {
+    const mockEntity = { id: 'org-1', createdAt: new Date(), updatedAt: new Date(), isActive: true };
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([mockEntity]),
     };
-    const createLogic = createOrganization(mockDeps);
-    const result = await createLogic({ name: 'Test', email: 'test@example.com' });
     
-    expect(result.isOk()).toBe(true);
-    expect(result._unsafeUnwrap().data.id).toBe('org-1');
-    expect(result._unsafeUnwrap().message).toBe('Created');
-    expect(mockDeps.findOrganizationByEmail).toHaveBeenCalledWith('test@example.com');
+    const insertFn = insertOrganization(mockDb as any);
+    const result = await insertFn({ id: 'org-1' });
+    
+    expect(result.id).toBe('org-1');
   });
 });
 ```
@@ -261,7 +347,7 @@ alllbe-proto/
 ## 実装ポリシー
 
 1. **純粋関数優先**: 副作用を最小限に抑えた関数型設計
-2. **Result型統一**: neverthrowでエラーハンドリング、例外throw禁止
+2. **ApplicationFailure ベースのエラーハンドリング**: ErrorType enum + ファクトリ関数による型安全なエラー処理
 3. **依存注入**: 高階関数による疎結合、テスト容易性の確保
 4. **型安全性**: Zodスキーマ + TypeScriptでランタイム・コンパイル時双方の安全性
 5. **最小権限**: Pick<>で必要な関数のみ受け取り、過度な依存を回避
@@ -272,7 +358,7 @@ alllbe-proto/
 ### 関数型プログラミング
 - **純粋関数**を優先し、副作用を最小限に抑える
 - **不変性**を保つ - オブジェクトの変更ではなく新しいオブジェクトの作成
-- **neverthrow**の`Result`型を使用してエラーハンドリングを行う
+- **ApplicationFailure**を使用してエラーハンドリングを行う
 - **高階関数**と**関数合成**を活用する
 
 ### Honoフレームワーク統合
@@ -291,26 +377,26 @@ app.use('/trpc/*', trpcServer({
 ### 型安全性
 - **Zod**を使用した実行時型検証
 - **厳密な型定義**とnull安全性
-- **Result型**による例外安全なエラーハンドリング
+- **ApplicationFailure**による例外安全なエラーハンドリング
 
 ### データベース操作
 - **Drizzle ORM**を使用したtype-safeなクエリ
-- **ResultAsync**によるDB操作のエラーハンドリング
+- **try-catch**によるDB操作のエラーハンドリング
 - **db/models層での抽象化**により具体的なDB実装に依存しない設計
 
 ## データベース設計
 
 **専用ガイドライン**: `database.instructions.md`を参照
 
-このプロジェクトでは「SQL Antipatterns, Volume 1」の知見を活用し、`backend/src/shared/db/**` でのデータベース設計時にアンチパターンを避けた最適なスキーマ設計を行います。詳細な設計原則、チェックリスト、ユーザーとの議論フローについては、専用の指示ファイルを参照してください。
+このプロジェクトでは「SQL Antipatterns, Volume 1」の知見を活用し、`backend/src/activities/db/**` でのデータベース設計時にアンチパターンを避けた最適なスキーマ設計を行います。詳細な設計原則、チェックリスト、ユーザーとの議論フローについては、専用の指示ファイルを参照してください。
 
 ## テスト戦略
 
-### GitHub Copilot自律テスト実行
-- **runTests()ツール**: GitHub Copilotが自動的にテスト実行
+### 単体テスト
 - **vitest**: TypeScript ネイティブ、高速テストフレームワーク
 - **最小依存**: Pick<>による必要最小限のモック
-- **Result型検証**: 正常系・異常系の包括的テスト
+- **エラーハンドリング検証**: try-catch + instanceof によるエラー種別確認
+- **エラーコード検証**: error.code による詳細なエラー分類
 
 ### VS Code統合
 - **vitest.explorer**: 視覚的フィードバックのみ
@@ -328,7 +414,7 @@ app.use('/trpc/*', trpcServer({
 
 ### ファクトリパターン（Backend実装）
 ```typescript
-// backend/src/shared/domain/organization.ts
+// backend/src/actions/organization.ts
 // 依存関数を束ねるファクトリ
 export const createOrganizationActions = (db: Database) => {
   const deps: OrganizationActionDeps = {
@@ -351,18 +437,53 @@ export const createOrganizationActions = (db: Database) => {
 };
 ```
 
-### Result型の使用
+### エラーハンドリングパターン
 ```typescript
-import { Result, ok, err } from 'neverthrow';
+// Activity層でのエラー処理
+export const createUser = (db: Database) => async (input: UserCreateInput): Promise<User> => {
+  try {
+    const existing = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
+    if (existing.length > 0) {
+      throw createUserError({
+        type: UserErrorType.ALREADY_EXISTS,
+        message: `User already exists: ${input.email}`,
+        details: { email: input.email },
+        nonRetryable: true,
+      });
+    }
 
-// サービス層での例
-export const createOrganization = (
-  data: CreateOrganizationData
-): Result<Organization, CreateOrganizationError> => {
-  return validateOrganizationData(data)
-    .andThen(saveOrganizationToDb)
-    .mapErr(mapDbErrorToServiceError);
+    const result = await db.insert(users).values(input).returning();
+    if (!result[0]) {
+      throw createUserError({
+        type: UserErrorType.DATABASE_ERROR,
+        message: 'Failed to insert user: no rows returned',
+        nonRetryable: false,
+      });
+    }
+
+    return userSchema.parse(result[0]);
+  } catch (error) {
+    if (error instanceof ApplicationFailure) {
+      throw error;
+    }
+    throw createUserError({
+      type: UserErrorType.DATABASE_ERROR,
+      message: 'Failed to create user',
+      details: error,
+      nonRetryable: false,
+    });
+  }
 };
+
+// Actions層での型安全なエラー宣言
+/**
+ * @throws ApplicationFailure (type: USER_NOT_FOUND) - ユーザーが見つからない場合
+ * @throws ApplicationFailure (type: USER_DATABASE_ERROR) - DB操作エラー
+ */
+export const getUserById = (deps: Pick<UserActionDeps, 'findUserById'>) =>
+  async (id: string): Promise<User | null> => {
+    return await deps.findUserById(id);
+  };
 ```
 
 ### 不変性の保持
@@ -384,26 +505,27 @@ const updateOrganization = (org: Organization, updates: Partial<Organization>) =
 ## 禁止事項
 
 - `any`型の使用
-- `throw`文による例外の投げ上げ
 - グローバル変数の使用
 - 副作用のある関数の無制限な使用
-- 非同期処理でのPromise.rejectの使用（Resultを使用）
 
 ## コメント規約
 
 - **なぜ**その実装をしたかを説明
 - 複雑なビジネスロジックには詳細なコメント
 - TSDocを使用した関数の文書化
+- **@throws**: 発生する可能性のあるApplicationFailure.typeを必ず記載
 
 ```typescript
 /**
  * 組織を作成し、初期設定を行います
  * @param data - 組織作成データ
- * @returns 作成された組織またはエラー
+ * @returns 作成された組織
+ * @throws ApplicationFailure (type: ORGANIZATION_ALREADY_EXISTS) - 組織が既に存在する場合
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
  */
-export const createOrganization = (
+export const createOrganization = async (
   data: CreateOrganizationData
-): Result<Organization, CreateOrganizationError> => {
+): Promise<Organization> => {
   // implementation
 };
 ```
@@ -427,7 +549,7 @@ export const createOrganization = (
   - Next.js の構造、API通信パターン、コンポーネント設計等
 - **shared/** の変更 → `shared.instructions.md` を更新
   - 型定義の追加方法、tsconfig 設定、型共有のパターン等
-- **backend/src/shared/db/** の変更 → `database.instructions.md` を更新
+- **backend/src/activities/db/** の変更 → `database.instructions.md` を更新
   - データベーススキーマ、マイグレーション、アンチパターン対策等
 
 #### ビジネス要件の変更（business-requirements.instructions.md を更新）
