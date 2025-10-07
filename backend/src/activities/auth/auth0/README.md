@@ -2,6 +2,93 @@
 
 Auth0 Management API を使用したエンドユーザー認証・個人情報管理Activity
 
+## 📋 目次
+
+1. [Auth0 セットアップガイド](#auth0-セットアップガイド)
+2. [責務](#責務)
+3. [ファイル構造](#ファイル構造)
+4. [依存注入パターン](#依存注入パターンカリー化)
+5. [使用方法](#使用方法)
+6. [Activity 一覧](#activity-一覧)
+7. [エラーハンドリング](#エラーハンドリング)
+8. [テスト](#テスト)
+9. [GDPR 対応](#gdpr-対応)
+10. [ベストプラクティス](#ベストプラクティス)
+
+## Auth0 セットアップガイド
+
+### 1. Auth0 アカウントの作成
+
+1. [Auth0](https://auth0.com/) にアクセスして作成
+
+### 2. Auth0 Management API のセットアップ
+
+#### 2-1. Machine to Machine Application の作成
+
+1. Auth0 ダッシュボードにログイン
+2. 左サイドバーの **Applications** → **Applications** をクリック
+3. **Create Application** ボタンをクリック
+4. アプリケーション名を入力（例: `Alllbe Backend API`）
+5. アプリケーションタイプで **Machine to Machine Applications** を選択
+6. **Create** をクリック
+7. API 選択画面で **Auth0 Management API** を選択
+8. 必要な権限（Scopes）を選択：
+   - ✅ `read:users`
+   - ✅ `update:users`
+   - ✅ `delete:users`
+   - ✅ `create:users`
+   - ✅ `read:users_app_metadata`
+   - ✅ `update:users_app_metadata`
+   - ✅ `create:users_app_metadata`
+   - ✅ `read:user_idp_tokens`
+9. **Authorize** をクリック
+
+#### 2-2. Client ID と Client Secret の取得
+
+1. 作成したアプリケーションの **Settings** タブを開く
+2. 以下の情報をコピー：
+   - **Domain**: `your-tenant.auth0.com`
+   - **Client ID**: `abc123...`
+   - **Client Secret**: `xyz789...` (⚠️ 秘密にすること！)
+
+### 3. Database Connection の作成
+
+1. 左サイドバーの **Authentication** → **Database** をクリック
+2. **Create DB Connection** ボタンをクリック
+3. コネクション名を入力（例: `Username-Password-Authentication`）
+4. **Create** をクリック
+5. **Settings** タブで以下を確認：
+   - ✅ **Requires Username**: オフ（メールアドレスでログイン）
+   - ✅ **Disable Sign Ups**: 必要に応じて設定
+
+### 4. 環境変数の設定
+
+```bash
+# .env ファイルに以下を追加
+
+# Auth0 Management API 設定
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_MANAGEMENT_CLIENT_ID=your_client_id_here
+AUTH0_MANAGEMENT_CLIENT_SECRET=your_client_secret_here
+
+# Database Connection 名（デフォルト）
+AUTH0_CONNECTION_NAME=Username-Password-Authentication
+```
+
+### 5. セットアップの確認
+
+```bash
+# backend ディレクトリで
+cd backend
+
+# 依存関係をインストール
+npm install
+
+# テストを実行（Auth0接続確認）
+npm test -- auth0
+```
+
+
 ## 責務
 
 Auth0は**エンドユーザーの個人情報と認証情報のマスター**として機能します：
@@ -250,6 +337,287 @@ export async function createEndUserWorkflow(input: CreateEndUserInput) {
     }
 }
 ```
+
+## テスト
+
+### テスト戦略
+
+Auth0 Activity のテストは**実際の Auth0 API を使用した統合テスト**で実施します。
+
+**理由**:
+1. **Auth0 API の仕様確認**: モックでは気づかない API の挙動を検証
+2. **エラーハンドリングの検証**: 実際のエラーレスポンスをテスト
+3. **認証フローの確認**: Management API の認証が正しく動作するか確認
+
+### テスト前の準備
+
+1. **テスト用 Auth0 テナントの作成**: 本番環境とは別のテナントを使用
+2. **環境変数の設定**: `.env.test` ファイルに Auth0 の設定を記述
+3. **テストユーザーのクリーンアップ**: テスト後にユーザーを削除
+
+### テスト環境変数
+
+```bash
+# .env.test
+AUTH0_DOMAIN=your-test-tenant.auth0.com
+AUTH0_MANAGEMENT_CLIENT_ID=test_client_id
+AUTH0_MANAGEMENT_CLIENT_SECRET=test_client_secret
+AUTH0_CONNECTION_NAME=Username-Password-Authentication
+```
+
+### テストの実行
+
+```bash
+# Auth0 Activity のテストのみ実行
+npm test -- auth0
+
+# 統合テストをすべて実行
+npm test -- --run
+
+# watch モードで実行
+npm test -- auth0 --watch
+```
+
+### テストファイル構造
+
+```
+auth0/
+├── user.test.ts              # User Activity 統合テスト
+├── auth0Client.test.ts       # Auth0 Client 初期化テスト
+└── README.md
+```
+
+### テスト例
+
+```typescript
+// user.test.ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { ApplicationFailure } from '@temporalio/common';
+import {
+    getAuth0ConfigFromEnv,
+    createAuth0ManagementClient,
+    getAuth0User,
+    createAuth0User,
+    updateAuth0User,
+    deleteAuth0User,
+    Auth0ErrorType,
+} from './index';
+import type { ManagementClient } from 'auth0';
+
+describe('Auth0 User Activities (Integration)', () => {
+    let auth0Client: ManagementClient;
+    let testUserId: string | null = null;
+
+    beforeAll(async () => {
+        // 実際の Auth0 クライアントを作成
+        const config = getAuth0ConfigFromEnv();
+        auth0Client = createAuth0ManagementClient(config);
+    });
+
+    afterAll(async () => {
+        // テスト後にユーザーをクリーンアップ
+        if (testUserId) {
+            try {
+                const deleteFn = deleteAuth0User(auth0Client);
+                await deleteFn(testUserId);
+            } catch (error) {
+                console.warn('Failed to cleanup test user:', error);
+            }
+        }
+    });
+
+    describe('createAuth0User', () => {
+        it('should create user successfully', async () => {
+            const createFn = createAuth0User(
+                auth0Client,
+                process.env.AUTH0_CONNECTION_NAME || 'Username-Password-Authentication'
+            );
+
+            const input = {
+                email: `test-${Date.now()}@example.com`,
+                password: 'Test1234!@#$',
+                given_name: 'Test',
+                family_name: 'User',
+            };
+
+            const result = await createFn(input);
+
+            // ユーザーが作成されたことを確認
+            expect(result.user_id).toBeDefined();
+            expect(result.email).toBe(input.email);
+            expect(result.given_name).toBe(input.given_name);
+            expect(result.family_name).toBe(input.family_name);
+
+            // クリーンアップ用に保存
+            testUserId = result.user_id!;
+        });
+
+        it('should throw AUTH0_EMAIL_ALREADY_EXISTS when email is duplicate', async () => {
+            const createFn = createAuth0User(
+                auth0Client,
+                process.env.AUTH0_CONNECTION_NAME || 'Username-Password-Authentication'
+            );
+
+            const input = {
+                email: `test-${Date.now()}@example.com`,
+                password: 'Test1234!@#$',
+            };
+
+            // 1回目: 成功
+            const firstResult = await createFn(input);
+            testUserId = firstResult.user_id!;
+
+            // 2回目: 重複エラー
+            await expect(createFn(input)).rejects.toThrow(ApplicationFailure);
+
+            try {
+                await createFn(input);
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApplicationFailure);
+                expect((error as ApplicationFailure).type).toBe(
+                    Auth0ErrorType.EMAIL_ALREADY_EXISTS
+                );
+            }
+        });
+    });
+
+    describe('getAuth0User', () => {
+        it('should get user by ID', async () => {
+            // まずユーザーを作成
+            const createFn = createAuth0User(
+                auth0Client,
+                process.env.AUTH0_CONNECTION_NAME || 'Username-Password-Authentication'
+            );
+            const created = await createFn({
+                email: `test-${Date.now()}@example.com`,
+                password: 'Test1234!@#$',
+            });
+            testUserId = created.user_id!;
+
+            // ユーザーを取得
+            const getFn = getAuth0User(auth0Client);
+            const result = await getFn(testUserId);
+
+            expect(result.user_id).toBe(testUserId);
+            expect(result.email).toBe(created.email);
+        });
+
+        it('should throw AUTH0_USER_NOT_FOUND when user does not exist', async () => {
+            const getFn = getAuth0User(auth0Client);
+            const nonExistentUserId = 'auth0|nonexistent123';
+
+            await expect(getFn(nonExistentUserId)).rejects.toThrow(ApplicationFailure);
+
+            try {
+                await getFn(nonExistentUserId);
+            } catch (error) {
+                expect(error).toBeInstanceOf(ApplicationFailure);
+                expect((error as ApplicationFailure).type).toBe(
+                    Auth0ErrorType.USER_NOT_FOUND
+                );
+            }
+        });
+    });
+
+    describe('updateAuth0User', () => {
+        it('should update user successfully', async () => {
+            // まずユーザーを作成
+            const createFn = createAuth0User(
+                auth0Client,
+                process.env.AUTH0_CONNECTION_NAME || 'Username-Password-Authentication'
+            );
+            const created = await createFn({
+                email: `test-${Date.now()}@example.com`,
+                password: 'Test1234!@#$',
+                given_name: 'Old Name',
+            });
+            testUserId = created.user_id!;
+
+            // ユーザーを更新
+            const updateFn = updateAuth0User(auth0Client);
+            const updated = await updateFn(testUserId, {
+                given_name: 'New Name',
+                family_name: 'Updated',
+            });
+
+            expect(updated.given_name).toBe('New Name');
+            expect(updated.family_name).toBe('Updated');
+        });
+    });
+
+    describe('deleteAuth0User', () => {
+        it('should delete user successfully', async () => {
+            // まずユーザーを作成
+            const createFn = createAuth0User(
+                auth0Client,
+                process.env.AUTH0_CONNECTION_NAME || 'Username-Password-Authentication'
+            );
+            const created = await createFn({
+                email: `test-${Date.now()}@example.com`,
+                password: 'Test1234!@#$',
+            });
+            const userId = created.user_id!;
+
+            // ユーザーを削除
+            const deleteFn = deleteAuth0User(auth0Client);
+            await deleteFn(userId);
+
+            // 削除されたことを確認（取得エラー）
+            const getFn = getAuth0User(auth0Client);
+            await expect(getFn(userId)).rejects.toThrow(ApplicationFailure);
+
+            // クリーンアップ済みなのでnullに
+            testUserId = null;
+        });
+    });
+});
+```
+
+### テストのベストプラクティス
+
+1. **テストユーザーのクリーンアップ**: `afterAll` で必ず削除
+2. **ユニークなメールアドレス**: `Date.now()` を使用して重複を避ける
+3. **実際の Auth0 API を使用**: モックではなく統合テスト
+4. **エラーケースの網羅**: 正常系と異常系を両方テスト
+5. **テスト順序に依存しない**: 各テストは独立して実行可能
+
+### CI/CD でのテスト実行
+
+GitHub Actions での実行例：
+
+```yaml
+# .github/workflows/test.yml
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./backend
+      
+      - name: Run Auth0 integration tests
+        env:
+          AUTH0_DOMAIN: ${{ secrets.AUTH0_TEST_DOMAIN }}
+          AUTH0_MANAGEMENT_CLIENT_ID: ${{ secrets.AUTH0_TEST_CLIENT_ID }}
+          AUTH0_MANAGEMENT_CLIENT_SECRET: ${{ secrets.AUTH0_TEST_CLIENT_SECRET }}
+          AUTH0_CONNECTION_NAME: Username-Password-Authentication
+        run: npm test -- auth0
+        working-directory: ./backend
+```
+
+**GitHub Secrets に以下を設定**:
+- `AUTH0_TEST_DOMAIN`
+- `AUTH0_TEST_CLIENT_ID`
+- `AUTH0_TEST_CLIENT_SECRET`
 
 ## GDPR 対応
 

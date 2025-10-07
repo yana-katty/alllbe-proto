@@ -56,6 +56,15 @@ const mapAuth0Error = (error: unknown): ApplicationFailure => {
             });
         }
 
+        if (err.statusCode === 400 || err.message?.includes('PasswordStrengthError') || err.message?.includes('invalid')) {
+            return createAuth0Error({
+                type: Auth0ErrorType.VALIDATION_ERROR,
+                message: err.message || 'Validation error',
+                details: error,
+                nonRetryable: true,
+            });
+        }
+
         if (err.statusCode === 401) {
             return createAuth0Error({
                 type: Auth0ErrorType.INVALID_CREDENTIALS,
@@ -110,7 +119,7 @@ export const getAuth0User = (client: ManagementClient) =>
     async (userId: string): Promise<Auth0UserProfile> => {
         try {
             const response = await client.users.get(userId);
-            const user = response.data;
+            const user = response.data || response;
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,
@@ -144,7 +153,7 @@ export const getAuth0UserSummary = (client: ManagementClient) =>
     async (userId: string): Promise<Auth0UserSummary> => {
         try {
             const response = await client.users.get(userId);
-            const user = response.data;
+            const user = response.data || response;
 
             return auth0UserSummarySchema.parse({
                 user_id: user.user_id,
@@ -187,7 +196,10 @@ export const createAuth0User = (client: ManagementClient, connectionName: string
             };
 
             const response = await client.users.create(createData);
-            const user = response.data;
+
+            // Auth0 SDK のレスポンス構造をチェック
+            // response.data がない場合は response 自体がユーザーオブジェクト
+            const user = response.data || response;
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,
@@ -231,7 +243,7 @@ export const updateAuth0User = (client: ManagementClient) =>
             };
 
             const response = await client.users.update(userId, updateData);
-            const user = response.data;
+            const user = response.data || response;
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,
@@ -284,7 +296,7 @@ export const updateAuth0EmailVerification = (client: ManagementClient) =>
             };
 
             const response = await client.users.update(userId, updateData);
-            const user = response.data;
+            const user = response.data || response;
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,
@@ -322,7 +334,7 @@ export const blockAuth0User = (client: ManagementClient) =>
             };
 
             const response = await client.users.update(userId, updateData);
-            const user = response.data;
+            const user = response.data || response;
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,
