@@ -75,6 +75,79 @@ export const experiences = pgTable('experiences', {
 // 外部サービスIDとは別に内部IDを持つ設計は、複雑さを増すだけ
 ```
 
+### Brand テーブル設計（Organization配下の中間エンティティ）
+
+Brand は Organization 配下のブランド管理エンティティであり、Experience の所有者となります。
+
+```typescript
+// ✅ 推奨: Brand テーブルの設計
+export const brands = pgTable('brands', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // WorkOS Organization への参照（外部キー）
+  organizationId: varchar('organization_id', { length: 255 })
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  
+  // Brand基本情報
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  logoUrl: text('logo_url'),
+  websiteUrl: text('website_url'),
+  
+  // Standardプランのデフォルトフラグ
+  // Standard: isDefault=true のBrandが1つだけ存在
+  // Enterprise: 複数のBrandを作成可能
+  isDefault: boolean('is_default').notNull().default(false),
+  
+  // 状態管理
+  isActive: boolean('is_active').notNull().default(true),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  // Organization別のBrand検索用（頻繁に使用）
+  organizationIdIdx: index('brands_organization_id_idx').on(table.organizationId),
+  
+  // Standardプランでのデフォルトチェック用（ユニーク制約として機能）
+  // 1つの Organization に対して isDefault=true は1つのみ
+  orgDefaultIdx: index('brands_org_default_idx').on(table.organizationId, table.isDefault),
+}));
+
+// ✅ Experience は Brand に紐づける
+export const experiences = pgTable('experiences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // ❌ 旧設計: organization_id を直接参照
+  // organizationId: varchar('organization_id', { length: 255 })
+  //   .notNull()
+  //   .references(() => organizations.id, { onDelete: 'cascade' }),
+  
+  // ✅ 新設計: brand_id を参照（Experience → Brand → Organization）
+  brandId: uuid('brand_id')
+    .notNull()
+    .references(() => brands.id, { onDelete: 'cascade' }),
+  
+  title: varchar('title', { length: 255 }).notNull(),
+  // ...その他のフィールド
+}, (table) => ({
+  // Brand別のExperience検索用
+  brandIdIdx: index('experiences_brand_id_idx').on(table.brandId),
+}));
+
+// ✅ メリット:
+// 1. プラン設計の柔軟性: Standard（1 Brand）→ Enterprise（100 Brands）への拡張が容易
+// 2. マルチブランド運営: 大企業の複数ブランド・事業部管理に対応
+// 3. WorkOS制約の回避: Organization配下での細分化構造を自社DB側で実現
+// 4. Brand別権限管理: Organization内でもBrand単位でのアクセス制御が可能
+// 5. データ分離: Brand削除時の連動削除による安全なデータ管理
+
+// ✅ プラン制限の実装:
+// - Standard: Organization作成時に isDefault=true のBrandを1つ自動作成
+// - Enterprise: 最大100個のBrandを作成可能
+// - 制限チェックはWorkflow層で実装
+```
+
 ## 2. リレーション設計の原則
 
 ### 避けるべきアンチパターン

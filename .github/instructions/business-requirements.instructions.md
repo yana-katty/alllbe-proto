@@ -35,14 +35,19 @@ UIデザインから価格設定に至るまで、すべての製品決定は「
 
 ## 主要機能要件
 
-### 1. Organization & Enterprise 管理
+### 1. Organization & Brand & Enterprise 管理
 - **Enterprise Ready 設計**: WorkOS を活用した SSO 対応・厳格な従業員ログイン管理
 - **Organization 管理**: 企業・団体が Organization エンティティを管理
-- **権限管理**: Organization 配下の管理側ユーザーの所属・権限設定
+- **Brand 管理**: Organization 配下に複数のブランド（Standard: 1個、Enterprise: 最大100個）
+- **権限管理**: Organization 配下の管理側ユーザーの所属・権限設定、Brand別のアクセス制御
 - **Multi-tenant アーキテクチャ**: 各 Organization の独立したデータ管理
+- **プラン制限**: 
+  - **Standard プラン**: 1 Brand、最大10人のメンバー
+  - **Enterprise プラン**: 最大100 Brands、無制限メンバー（または1,000人上限）
 
 ### 2. Experience 管理（コンテンツの核）
 - **Experience 作成**: タイトル、説明、場所、料金、体験タイプの設定
+- **Brand への紐づけ**: すべての Experience は特定の Brand に所属
 - **多様な体験タイプ**: 
   - 日時指定型（特定の時間に開催）
   - 期間指定型（期間中いつでも入場可能）
@@ -148,14 +153,16 @@ UIデザインから価格設定に至るまで、すべての製品決定は「
 
 ### 主要エンティティ
 1. **Organization（組織）**: Enterprise エンティティ、WorkOS SSO 対応
-2. **Experience（体験）**: LBE コンテンツの核、多様な体験タイプ対応
-3. **User（ユーザー）**: エンドユーザー（プラットフォーム一意ID）と管理ユーザー（Organization 所属）
-4. **Booking（予約）**: Experience 予約・決済・入場記録
-5. **ExperienceAssets（関連コンテンツ）**: Before/After コンテンツ、アクセス権限管理
+2. **Brand（ブランド）**: Organization 配下のブランド（Standard: 1個、Enterprise: 最大100個）
+3. **Experience（体験）**: LBE コンテンツの核、Brand に紐づく
+4. **User（ユーザー）**: エンドユーザー（プラットフォーム一意ID）と管理ユーザー（Organization 所属）
+5. **Booking（予約）**: Experience 予約・決済・入場記録
+6. **ExperienceAssets（関連コンテンツ）**: Before/After コンテンツ、アクセス権限管理
 
 ### リレーションシップ
-- Organization 1:N Experience（組織は複数の Experience を運営）
+- Organization 1:N Brand（Standard: 1固定、Enterprise: 最大100）
 - Organization 1:N OrgUser（組織には複数の管理ユーザー）
+- Brand 1:N Experience（ブランドは複数の Experience を運営）
 - Experience 1:N Booking（Experience には複数の予約）
 - Experience 1:N ExperienceAssets（Experience には複数の関連コンテンツ）
 - User 1:N Booking（エンドユーザーは複数の Experience を予約）

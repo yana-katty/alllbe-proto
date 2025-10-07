@@ -15,6 +15,19 @@ CREATE TABLE IF NOT EXISTS "bookings" (
 	CONSTRAINT "bookings_qr_code_unique" UNIQUE("qr_code")
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "brands" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" varchar(255) NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"description" text,
+	"logo_url" text,
+	"website_url" text,
+	"is_default" boolean DEFAULT false NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "experience_assets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"experience_id" uuid NOT NULL,
@@ -37,7 +50,7 @@ CREATE TABLE IF NOT EXISTS "experience_assets" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "experiences" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"organization_id" varchar(255) NOT NULL,
+	"brand_id" uuid NOT NULL,
 	"title" varchar(255) NOT NULL,
 	"description" text,
 	"location" text,
@@ -108,13 +121,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "brands" ADD CONSTRAINT "brands_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "experience_assets" ADD CONSTRAINT "experience_assets_experience_id_experiences_id_fk" FOREIGN KEY ("experience_id") REFERENCES "public"."experiences"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "experiences" ADD CONSTRAINT "experiences_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "experiences" ADD CONSTRAINT "experiences_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -132,11 +151,17 @@ CREATE INDEX IF NOT EXISTS "bookings_status_idx" ON "bookings" USING btree ("sta
 CREATE INDEX IF NOT EXISTS "bookings_scheduled_visit_time_idx" ON "bookings" USING btree ("scheduled_visit_time");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "bookings_user_status_idx" ON "bookings" USING btree ("user_id","status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "bookings_experience_scheduled_idx" ON "bookings" USING btree ("experience_id","scheduled_visit_time");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "brands_organization_id_idx" ON "brands" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "brands_org_default_idx" ON "brands" USING btree ("organization_id","is_default");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experience_assets_experience_id_idx" ON "experience_assets" USING btree ("experience_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experience_assets_content_timing_idx" ON "experience_assets" USING btree ("content_timing");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experience_assets_access_level_idx" ON "experience_assets" USING btree ("access_level");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experience_assets_exp_timing_access_idx" ON "experience_assets" USING btree ("experience_id","content_timing","access_level");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experience_assets_category_idx" ON "experience_assets" USING btree ("category");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "experiences_brand_id_idx" ON "experiences" USING btree ("brand_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "experiences_status_idx" ON "experiences" USING btree ("status");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "experiences_experience_type_idx" ON "experiences" USING btree ("experience_type");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "experiences_brand_status_idx" ON "experiences" USING btree ("brand_id","status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "payments_booking_id_idx" ON "payments" USING btree ("booking_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "payments_status_idx" ON "payments" USING btree ("status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "payments_payment_method_idx" ON "payments" USING btree ("payment_method");--> statement-breakpoint

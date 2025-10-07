@@ -59,58 +59,74 @@ applyTo: "backend/src/activities/auth/**"
 └─────────────────┴─────────────────┴─────────────────┘
 ```
 
-## WorkOS Organization 設計: Single vs Multiple Workspace
+## WorkOS Organization と Brand の関係設計
 
 参考: [Model your B2B SaaS with Organizations - WorkOS Blog](https://workos.com/blog/model-your-b2b-saas-with-organizations)
 
-### Enterprise Organization (Single Workspace) - Phase 2実装予定
+### アーキテクチャ概要
 
-**Enterprise プランは1つのWorkspaceのみ強制**:
-
-```
-Enterprise Organization
-  ↓ (1対1)
-Single Workspace
-  - 全ユーザーが同じWorkspaceを共有
-  - SSO必須・ドメイン制限
-  - 統一された管理体系
-```
-
-**メリット**:
-- セキュリティ強化（SSO・ドメイン制限）
-- 一元管理が容易
-- シンプルな権限体系
-
-### Standard Organization (Multiple Workspace) - Phase 1実装中
-
-**Standard プランは複数のWorkspaceを作成可能**:
+WorkOS Organization が最上位エンティティであり、その配下に **Brand（ブランド）** を配置します：
 
 ```
-Standard Organization
+WorkOS Organization (WorkOS管理)
+  ↓ (1対1 または 1対多、プランによって異なる)
+Brand (自社DB管理)
   ↓ (1対多)
-Multiple Workspaces
-  - チーム・地域・プロジェクト単位で分割
-  - 柔軟な構成
-  - 段階的な拡大が可能
+Experience (体験コンテンツ)
+  ↓ (1対多)
+Booking (予約)
 ```
 
-**メリット**:
-- 柔軟性（チーム・拠点ごとに分離）
-- スケーラビリティ
-- コスト最適化
+### Standard プラン (Phase 1実装中)
 
-### 現在の実装スコープ (MVP: Phase 1)
+**小規模事業者向け、シンプルな運営体制**:
 
-**Multiple Workspace のみ実装**:
-- Organization 作成時、デフォルトで1つのWorkspaceを作成
-- Workspace は Organization に紐づく（1対多）
-- Experience・Booking は Workspace に紐づく
-- ユーザーは複数の Workspace にアクセス可能
+```
+WorkOS Organization
+  ↓ (1対1)
+Single Brand (デフォルト、固定)
+  ↓ (1対多)
+Experiences
+```
 
-**Phase 2での拡張**:
-- Enterprise Organization は Single Workspace
-- SSO 必須設定・ドメイン制限
-- Organization = Workspace として扱う
+**制約**:
+- **Brand数**: 1つのみ（固定、追加作成不可）
+- **メンバー数**: 最大10人
+- **SSO**: 不要（Email/Passwordログイン）
+- **ドメイン制限**: なし
+
+**用途**: 個人クリエイター、小規模チーム、スタートアップ
+
+**実装**:
+- Organization作成時に自動で1つのデフォルトBrand（`isDefault: true`）を作成
+- Brand削除は不可（Organization削除時に連動削除）
+- UI上でBrand作成ボタンを非表示
+
+### Enterprise プラン (Phase 2実装予定)
+
+**大企業向け、複数ブランド・拠点の統合管理**:
+
+```
+WorkOS Organization
+  ↓ (1対多)
+Multiple Brands (最大100個)
+  ↓ (1対多)
+Experiences
+```
+
+**機能**:
+- **Brand数**: 最大100個
+- **メンバー数**: 無制限（または高い上限、例: 1,000人）
+- **SSO**: 必須（WorkOS SSO統合）
+- **ドメイン制限**: 有効化可能
+
+**用途**: 複数ブランド運営企業、多拠点展開企業、大規模組織
+
+**実装**:
+- Brandの自由な作成・編集・削除
+- Brand間の統合レポート・分析
+- Brand別の権限管理・アクセス制御
+- SSO経由での厳格な従業員管理
 
 ## Activity 設計原則
 
@@ -193,34 +209,74 @@ export async function inviteOrganizationUserWorkflow(
 ### DB Schema
 
 ```sql
--- Organizations: 自社DBで管理する基本情報のみ
+-- Organizations: WorkOS Organization IDの参照テーブル
 CREATE TABLE organizations (
-    id UUID PRIMARY KEY,
-    workos_organization_id VARCHAR(255) UNIQUE,  -- WorkOS Organization ID
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    id VARCHAR(255) PRIMARY KEY,  -- WorkOS Organization ID
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Workspaces: Standard Organization 用の複数 Workspace 対応
-CREATE TABLE workspaces (
+-- Brands: Organization配下のブランド管理
+CREATE TABLE brands (
     id UUID PRIMARY KEY,
-    organization_id UUID REFERENCES organizations(id),
+    organization_id VARCHAR(255) REFERENCES organizations(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    logo_url TEXT,
+    website_url TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,  -- Standardプランのデフォルトフラグ
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Experiences: Workspace に紐づく（NOT organization_id）
+-- Experiences: Brand に紐づく（NOT organization_id）
 CREATE TABLE experiences (
     id UUID PRIMARY KEY,
-    workspace_id UUID REFERENCES workspaces(id),
+    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
     -- ... other fields
 );
+```
+
+### プラン制限の実装
+
+```typescript
+// Brandの制限をチェック
+export async function canCreateBrand(
+    organizationId: string, 
+    planType: 'standard' | 'enterprise'
+): Promise<boolean> {
+    const existingBrands = await db.select()
+        .from(brands)
+        .where(eq(brands.organizationId, organizationId));
+    
+    if (planType === 'standard') {
+        // Standardは1つまで（実際は作成済みのため常にfalse）
+        return existingBrands.length === 0;
+    } else {
+        // Enterpriseは100個まで
+        return existingBrands.length < 100;
+    }
+}
+
+// メンバー数の制限をチェック（WorkOS側）
+export async function canInviteMember(
+    organizationId: string, 
+    planType: 'standard' | 'enterprise'
+): Promise<boolean> {
+    const members = await workos.userManagement.listOrganizationMemberships({
+        organizationId,
+    });
+    
+    if (planType === 'standard') {
+        // Standardは10人まで
+        return members.data.length < 10;
+    } else {
+        // Enterpriseは無制限（または1000人）
+        return members.data.length < 1000;
+    }
+}
 ```
 
 ### WorkOS Organization (外部管理)
@@ -244,8 +300,8 @@ WorkOS が管理する情報:
 - ✅ Workflow で複雑な処理を調整
 
 ### Organization 設計
-- **MVP (Phase 1)**: Multiple Workspace のみ実装（Standard Organization）
-- **Future (Phase 2)**: Single Workspace 追加（Enterprise Organization）
+- **MVP (Phase 1)**: Single Brand のみ実装（Standard プラン）
+- **Future (Phase 2)**: Multiple Brands 対応（Enterprise プラン）
 
 ### データ分離
 - **Auth0**: エンドユーザーの個人情報・認証情報

@@ -71,11 +71,75 @@ export type NewUser = z.infer<typeof insertUserSchema>;
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 
 // ============================================
+// Brands table - Organization配下のブランド管理
+// ============================================
+// Organization 配下に複数のブランドを持つ設計
+// Standard プラン: 1つのデフォルトBrandのみ（isDefault: true）
+// Enterprise プラン: 最大100個のBrandを作成可能
+export const brands = pgTable('brands', {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // WorkOS Organization への参照
+    organizationId: varchar('organization_id', { length: 255 })
+        .notNull()
+        .references(() => organizations.id, { onDelete: 'cascade' }),
+
+    // Brand基本情報
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    logoUrl: text('logo_url'),
+    websiteUrl: text('website_url'),
+
+    // Standardプランのデフォルトフラグ
+    // Standard: isDefault=true のBrandが1つだけ存在
+    // Enterprise: 複数のBrandを作成可能
+    isDefault: boolean('is_default').notNull().default(false),
+
+    // 状態管理
+    isActive: boolean('is_active').notNull().default(true),
+
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+    // Organization別のBrand検索用（頻繁に使用）
+    organizationIdIdx: index('brands_organization_id_idx').on(table.organizationId),
+    // Standardプランでのデフォルトチェック用
+    orgDefaultIdx: index('brands_org_default_idx').on(table.organizationId, table.isDefault),
+}));
+
+export const insertBrandSchema = createInsertSchema(brands, {
+    organizationId: z.string().min(1, 'Organization ID is required'),
+    name: z.string().min(1, 'Name is required').max(255),
+    description: z.string().optional(),
+    logoUrl: z.string().url('Invalid URL format').optional(),
+    websiteUrl: z.string().url('Invalid URL format').optional(),
+    isDefault: z.boolean().default(false),
+});
+
+export const selectBrandSchema = createSelectSchema(brands);
+
+export const updateBrandSchema = insertBrandSchema.partial().omit({
+    id: true,
+    organizationId: true,
+    createdAt: true,
+    updatedAt: true,
+});
+
+export type Brand = z.infer<typeof selectBrandSchema>;
+export type NewBrand = z.infer<typeof insertBrandSchema>;
+export type UpdateBrand = z.infer<typeof updateBrandSchema>;
+
+// ============================================
 // Experiences table - Location Based Entertainment コンテンツ
 // ============================================
 export const experiences = pgTable('experiences', {
     id: uuid('id').primaryKey().defaultRandom(),
-    organizationId: varchar('organization_id', { length: 255 }).notNull().references(() => organizations.id, { onDelete: 'cascade' }), // WorkOS Organization ID
+
+    // ✅ 新設計: brand_id を参照（Experience → Brand → Organization）
+    brandId: uuid('brand_id')
+        .notNull()
+        .references(() => brands.id, { onDelete: 'cascade' }),
+
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
     location: text('location'), // 場所情報（住所など）
@@ -119,10 +183,19 @@ export const experiences = pgTable('experiences', {
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+}, (table) => ({
+    // Brand別のExperience検索用（頻繁に使用）
+    brandIdIdx: index('experiences_brand_id_idx').on(table.brandId),
+    // ステータス別検索用
+    statusIdx: index('experiences_status_idx').on(table.status),
+    // Experience タイプ別検索用
+    experienceTypeIdx: index('experiences_experience_type_idx').on(table.experienceType),
+    // Brand＋ステータス検索用（管理画面で頻繁に使用）
+    brandStatusIdx: index('experiences_brand_status_idx').on(table.brandId, table.status),
+}));
 
 export const insertExperienceSchema = createInsertSchema(experiences, {
-    organizationId: z.string().min(1, 'Organization ID is required'), // WorkOS Organization ID
+    brandId: z.string().uuid('Invalid brand ID'),
     title: z.string().min(1, 'Title is required').max(255),
     description: z.string().optional(),
     location: z.string().optional(),
@@ -150,7 +223,7 @@ export const selectExperienceSchema = createSelectSchema(experiences);
 
 export const updateExperienceSchema = insertExperienceSchema.partial().omit({
     id: true,
-    organizationId: true,
+    brandId: true,
     createdAt: true,
     updatedAt: true,
 });
