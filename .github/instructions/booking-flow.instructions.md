@@ -476,77 +476,12 @@ pending (返金不要・未払いのまま)
 
 ### 1. トランザクション管理
 
-**QRコード入場処理**:
-```typescript
-// 入場記録と支払い完了を一括トランザクションで処理
-await db.transaction(async (tx) => {
-  // 1. Booking の status を attended に更新
-  await tx.update(bookings).set({
-    status: 'attended',
-    attendedAt: new Date(),
-  });
-  
-  // 2. 現地払いの場合は paymentStatus を completed に更新
-  if (booking.paymentMethod === 'onsite') {
-    await tx.update(bookings).set({
-      paymentStatus: 'completed',
-      paidAt: new Date(),
-    });
-  }
-});
-```
+**実装状況**: ✅ 実装済み
 
----
-
-### 2. アクセス権限チェック
-
-**Afterコンテンツ取得時**:
-```typescript
-// ユーザーが体験済みかをチェック
-const hasAttended = await db.select()
-  .from(bookings)
-  .where(
-    and(
-      eq(bookings.userId, userId),
-      eq(bookings.experienceId, experienceId),
-      eq(bookings.status, 'attended')
-    )
-  )
-  .limit(1);
-
-if (!hasAttended) {
-  return err({ 
-    code: ExperienceAssetErrorCode.ACCESS_DENIED, 
-    message: 'Experience not attended' 
-  });
-}
-
-// After コンテンツを取得
-const afterAssets = await listExperienceAssetsByAccessLevel(
-  experienceId, 
-  'attended'
-);
-```
-
----
-
-### 3. キャッシュ戦略
-
-**Afterコンテンツのキャッシュ**:
-- ユーザーごとの体験履歴をキャッシュ
-- アクセス権限チェックの高速化
-- コンテンツ一覧のキャッシュ（5-10分）
-
----
-
-### 4. 通知システム
-
-**通知タイミング**:
-1. 予約確定時
-2. 予約前日リマインダー（24時間前）
-3. 入場完了時
-4. Afterコンテンツ追加時（オプション）
-5. キャンセル時
+Booking と Payment の更新は Temporal Workflow で管理されています：
+- **実装場所**: `backend/src/workflows/booking.ts` の `checkInWithQRCodeWorkflow`
+- **設計**: 複数テーブル更新はWorkflow層で管理、各ActivityはSingle Table責務
+- **SAGAパターン**: エラー時の補償処理はWorkflowで実装
 
 ---
 
@@ -559,482 +494,81 @@ const afterAssets = await listExperienceAssetsByAccessLevel(
    - 自動返金処理
    - 分割払い対応
 
-2. **複雑なアクセス権限**
+2. **複雑なアクセス権限（ExperienceAssets）**
+   - `getAccessibleAssets`: ユーザーの予約・参加状況に基づいたコンテンツ取得
+   - `checkAssetAccess`: 特定コンテンツへのアクセス可否チェック
    - 時限的アクセス（体験後1週間のみ）
    - 条件付きアクセス（複数Experience体験者限定）
    - ExperienceAssetsAccessPolicies テーブルへの移行
 
-3. **体験者レビュー**
+3. **キャッシュ戦略**
+   - ユーザーごとの体験履歴をキャッシュ
+   - アクセス権限チェックの高速化
+   - コンテンツ一覧のキャッシュ（5-10分）
+
+4. **通知システム**
+   - 予約確定時通知
+   - 予約前日リマインダー（24時間前）
+   - 入場完了時通知
+   - Afterコンテンツ追加時通知（オプション）
+   - キャンセル時通知
+
+5. **体験者レビュー**
    - 体験後のレビュー投稿
    - Organization による承認フロー
    - 公開レビューの表示
 
-4. **体験後の特典**
+6. **体験後の特典**
    - フォトスポット
    - 体験証明書
    - 次回クーポン
 
 ---
 
-## 実装レイヤー別の必要な関数・ワークフロー
+## 実装状況
 
-### Activities Layer (`backend/src/activities/db/models`)
+### ✅ 実装済み
 
-#### 既存の Activity Functions（実装済み）
+すべての主要コンポーネントが実装されています:
 
-**booking.ts**:
-- ✅ `insertBooking` - Booking作成
-- ✅ `findBookingById` - ID で Booking 取得
-- ✅ `findBookingByQrCode` - QRコードで Booking 取得
-- ✅ `listBookings` - Booking 一覧取得
-- ✅ `listBookingsByUser` - ユーザー別 Booking 一覧
-- ✅ `listBookingsByExperience` - Experience 別 Booking 一覧
-- ✅ `updateBooking` - Booking 更新
-- ✅ `removeBooking` - Booking 削除
-- ✅ `markBookingAsAttendedActivity` - QRコードでの入場記録
+- **Workflows** → `backend/src/workflows/booking.ts`
+  - `createBookingWorkflow`: 予約作成とQRコード生成
+  - `checkInWithQRCodeWorkflow`: QRコードでのチェックイン処理
+  - `cancelBookingWorkflow`: 予約キャンセル処理
 
-**experienceAssets.ts**:
-- ✅ `insertExperienceAsset` - コンテンツ作成
-- ✅ `findExperienceAssetById` - コンテンツ取得
-- ✅ `listExperienceAssets` - コンテンツ一覧
-- ✅ `listExperienceAssetsByExperience` - Experience 別コンテンツ
-- ✅ `listExperienceAssetsByTimingActivity` - Before/After 別コンテンツ
-- ✅ `listExperienceAssetsByAccessLevelActivity` - アクセス権限別コンテンツ
-- ✅ `updateExperienceAsset` - コンテンツ更新
-- ✅ `removeExperienceAsset` - コンテンツ削除
+- **Actions** → `backend/src/actions/booking.ts`
+  - `getBookingById`: 予約詳細取得
+  - `listBookingsByUserAction`: ユーザーの予約一覧
+  - `listBookingsByExperienceAction`: 体験の予約一覧
+  - `listAttendedBookingsByUserAction`: 参加済み予約一覧
+  - `hasUserAttendedExperienceAction`: 体験参加確認
 
-#### 追加が必要な Activity Functions
+- **tRPC Router** → `backend/src/trpc/booking.ts`
+  - Queries: `getById`, `listMine`, `listByExperience`, `listAttended`, `hasAttended`
+  - Mutations: `create`, `checkIn`, `cancel`
 
-**booking.ts に追加**:
-```typescript
-/**
- * ユーザーの体験履歴取得（attended のみ）
- */
-export async function listAttendedBookingsByUserActivity(
-    userId: string
-): Promise<{ ok: true; value: Booking[] } | { ok: false; error: BookingError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listBookingsByUser(db)(userId, {
-        status: 'attended',
-    });
-    
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
-}
-
-/**
- * ユーザーが特定の Experience を体験済みかチェック
- */
-export async function hasUserAttendedExperienceActivity(
-    userId: string,
-    experienceId: string
-): Promise<{ ok: true; value: boolean } | { ok: false; error: BookingError }> {
-    const { getDatabase } = await import('../connection');
-    const db = getDatabase();
-    const result = await listBookings(db)({
-        userId,
-        experienceId,
-        status: 'attended',
-        limit: 1,
-        offset: 0,
-    });
-    
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value.length > 0 };
-}
-```
+- **Tests**
+  - Workflow Tests → `backend/src/workflows/booking.workflow.test.ts`
+  - tRPC Router Tests → `backend/src/trpc/booking.test.ts`
 
 ---
 
-### Workflows Layer (`backend/src/workflows`)
+## Activity関数一覧
 
-#### 必要な Workflows
+実装済みのActivity関数については以下のファイルを参照:
 
-**booking.ts**:
-```typescript
-import { proxyActivities, ApplicationFailure } from '@temporalio/workflow';
-import type * as activities from '../activities';
+- **Booking Activities** → `backend/src/activities/db/models/booking.ts`
+  - CRUD操作: `insertBooking`, `findBookingById`, `findBookingByQrCode`, `listBookings`, `updateBooking`, etc.
+  - ビジネスロジック: `listAttendedBookingsByUser`, `hasUserAttendedExperience`
 
-const {
-  createBookingActivity,
-  updateBookingActivity,
-  getBookingByQrCodeActivity,
-  hasUserAttendedExperienceActivity,
-} = proxyActivities<typeof activities>({
-  startToCloseTimeout: '30s'
-});
+- **Payment Activities** → `backend/src/activities/db/models/payment.ts`
+  - CRUD操作: `insertPayment`, `findPaymentById`, `findPaymentByBookingId`, `updatePayment`, etc.
+  - ビジネスロジック: `completePayment`, `refundPayment`
 
-/**
- * 予約作成 Workflow
- * - QRコード生成
- * - Booking作成
- * - 通知送信（Phase 2）
- */
-export async function createBookingWorkflow(
-  input: BookingCreateInput
-): Promise<Booking> {
-  // 1. QRコード生成（ユニーク性保証）
-  const qrCode = generateUniqueQRCode();
-  
-  // 2. Booking 作成
-  const result = await createBookingActivity({
-    ...input,
-    qrCode,
-  });
-  
-  if (!result.ok) {
-    throw ApplicationFailure.create({
-      message: result.error.message,
-      type: result.error.code,
-    });
-  }
-  
-  // 3. 通知送信（Phase 2）
-  // await sendBookingConfirmationEmail(result.value);
-  
-  return result.value;
-}
-
-/**
- * QRコード入場 Workflow
- * - QRコード検証
- * - 入場記録
- * - 現地払いの場合は支払い完了
- */
-export async function checkInWithQRCodeWorkflow(
-  qrCode: string
-): Promise<Booking> {
-  // 1. QRコードで Booking 取得
-  const bookingResult = await getBookingByQrCodeActivity(qrCode);
-  
-  if (!bookingResult.ok) {
-    throw ApplicationFailure.create({
-      message: 'QR code not found',
-      type: 'QR_CODE_NOT_FOUND',
-    });
-  }
-  
-  const booking = bookingResult.value;
-  if (!booking) {
-    throw ApplicationFailure.create({
-      message: 'Booking not found',
-      type: 'BOOKING_NOT_FOUND',
-    });
-  }
-  
-  // 2. バリデーション
-  if (booking.status === 'attended') {
-    throw ApplicationFailure.create({
-      message: 'Already checked in',
-      type: 'ALREADY_ATTENDED',
-    });
-  }
-  
-  if (booking.status === 'cancelled') {
-    throw ApplicationFailure.create({
-      message: 'Booking is cancelled',
-      type: 'BOOKING_CANCELLED',
-    });
-  }
-  
-  // 3. 入場記録＋支払い完了
-  const updateResult = await updateBookingActivity(booking.id, {
-    status: 'attended',
-    attendedAt: new Date(),
-    // 現地払いの場合は支払い完了
-    ...(booking.paymentMethod === 'onsite' && booking.paymentStatus === 'pending' ? {
-      paymentStatus: 'completed',
-      paidAt: new Date(),
-    } : {}),
-  });
-  
-  if (!updateResult.ok) {
-    throw ApplicationFailure.create({
-      message: updateResult.error.message,
-      type: updateResult.error.code,
-    });
-  }
-  
-  return updateResult.value!;
-}
-
-/**
- * キャンセル Workflow
- * - キャンセル処理
- * - 返金処理（クレカの場合）
- */
-export async function cancelBookingWorkflow(
-  bookingId: string,
-  reason?: string
-): Promise<Booking> {
-  // 1. Booking 取得
-  const bookingResult = await getBookingByIdActivity(bookingId);
-  
-  if (!bookingResult.ok || !bookingResult.value) {
-    throw ApplicationFailure.create({
-      message: 'Booking not found',
-      type: 'BOOKING_NOT_FOUND',
-    });
-  }
-  
-  const booking = bookingResult.value;
-  
-  // 2. キャンセル処理
-  const updateData: BookingUpdateInput = {
-    status: 'cancelled',
-    cancelledAt: new Date(),
-    cancellationReason: reason,
-  };
-  
-  // 3. クレカ決済済みの場合は返金
-  if (booking.paymentMethod === 'credit_card' && booking.paymentStatus === 'completed') {
-    // Phase 2: 返金処理
-    // await refundPaymentActivity(booking.id);
-    updateData.paymentStatus = 'refunded';
-    updateData.refundedAt = new Date();
-  }
-  
-  const result = await updateBookingActivity(bookingId, updateData);
-  
-  if (!result.ok) {
-    throw ApplicationFailure.create({
-      message: result.error.message,
-      type: result.error.code,
-    });
-  }
-  
-  return result.value!;
-}
-```
-
----
-
-### Actions Layer (`backend/src/actions`)
-
-#### 必要な Actions
-
-**experienceAssets.ts**:
-```typescript
-import type { ExperienceAsset } from '../activities/db/schema';
-
-/**
- * ユーザーがアクセス可能なコンテンツを取得
- * - Public コンテンツは常にアクセス可能
- * - ticket_holder: 予約済みならアクセス可能
- * - attended: 体験済みならアクセス可能
- */
-export const getAccessibleAssets = (deps: {
-  listExperienceAssetsByExperienceActivity: (experienceId: string, params?: any) => Promise<any>;
-  findBookingsByUserActivity: (userId: string, params?: any) => Promise<any>;
-  hasUserAttendedExperienceActivity: (userId: string, experienceId: string) => Promise<any>;
-}) => async (
-  userId: string,
-  experienceId: string,
-  contentTiming?: 'before' | 'after' | 'anytime'
-): Promise<Result<ExperienceAsset[], ExperienceAssetError>> => {
-  
-  // 1. 全コンテンツ取得
-  const assetsResult = await deps.listExperienceAssetsByExperienceActivity(
-    experienceId,
-    contentTiming ? { contentTiming } : undefined
-  );
-  
-  if (!assetsResult.ok) {
-    return err(assetsResult.error);
-  }
-  
-  const allAssets = assetsResult.value;
-  
-  // 2. Public コンテンツは常に含める
-  const accessibleAssets = allAssets.filter((asset: ExperienceAsset) => 
-    asset.accessLevel === 'public'
-  );
-  
-  // 3. ユーザーの予約状況を確認
-  const bookingsResult = await deps.findBookingsByUserActivity(userId, {
-    experienceId,
-    limit: 10,
-  });
-  
-  if (bookingsResult.ok && bookingsResult.value.length > 0) {
-    // 予約あり: ticket_holder コンテンツを追加
-    const ticketHolderAssets = allAssets.filter((asset: ExperienceAsset) =>
-      asset.accessLevel === 'ticket_holder'
-    );
-    accessibleAssets.push(...ticketHolderAssets);
-    
-    // 体験済みかチェック
-    const hasAttended = bookingsResult.value.some((b: Booking) => b.status === 'attended');
-    
-    if (hasAttended) {
-      // 体験済み: attended コンテンツを追加
-      const attendedAssets = allAssets.filter((asset: ExperienceAsset) =>
-        asset.accessLevel === 'attended'
-      );
-      accessibleAssets.push(...attendedAssets);
-    }
-  }
-  
-  return ok(accessibleAssets);
-};
-
-/**
- * ユーザーが特定のコンテンツにアクセス可能かチェック
- */
-export const checkAssetAccess = (deps: {
-  findExperienceAssetByIdActivity: (id: string) => Promise<any>;
-  hasUserAttendedExperienceActivity: (userId: string, experienceId: string) => Promise<any>;
-  findBookingsByUserActivity: (userId: string, params?: any) => Promise<any>;
-}) => async (
-  userId: string,
-  assetId: string
-): Promise<Result<boolean, ExperienceAssetError>> => {
-  
-  // 1. コンテンツ取得
-  const assetResult = await deps.findExperienceAssetByIdActivity(assetId);
-  
-  if (!assetResult.ok || !assetResult.value) {
-    return err({ code: 'NOT_FOUND', message: 'Asset not found' });
-  }
-  
-  const asset = assetResult.value;
-  
-  // 2. Public なら常にアクセス可能
-  if (asset.accessLevel === 'public') {
-    return ok(true);
-  }
-  
-  // 3. ticket_holder の場合は予約があればOK
-  if (asset.accessLevel === 'ticket_holder') {
-    const bookingsResult = await deps.findBookingsByUserActivity(userId, {
-      experienceId: asset.experienceId,
-      limit: 1,
-    });
-    
-    if (bookingsResult.ok && bookingsResult.value.length > 0) {
-      return ok(true);
-    }
-    return ok(false);
-  }
-  
-  // 4. attended の場合は体験済みが必要
-  if (asset.accessLevel === 'attended') {
-    const hasAttendedResult = await deps.hasUserAttendedExperienceActivity(
-      userId,
-      asset.experienceId
-    );
-    
-    if (hasAttendedResult.ok) {
-      return ok(hasAttendedResult.value);
-    }
-    return ok(false);
-  }
-  
-  return ok(false);
-};
-```
-
----
-
-### tRPC Layer (`backend/src/trpc`)
-
-#### 必要な Endpoints
-
-**booking.ts**:
-```typescript
-import { z } from 'zod';
-import { publicProcedure, protectedProcedure, router } from './base';
-import { bookingCreateSchema, bookingIdSchema } from '../activities/db/models/booking';
-
-export const bookingRouter = router({
-  /**
-   * 予約作成
-   */
-  create: protectedProcedure
-    .input(bookingCreateSchema)
-    .mutation(async ({ input, ctx }) => {
-      // Temporal Workflow 呼び出し
-      const result = await ctx.temporal.workflow.execute(
-        'createBookingWorkflow',
-        {
-          args: [input],
-          taskQueue: 'default',
-          workflowId: `booking-create-${Date.now()}`,
-        }
-      );
-      return result;
-    }),
-  
-  /**
-   * QRコード入場
-   */
-  checkIn: protectedProcedure
-    .input(z.object({ qrCode: z.string() }))
-    .mutation(async ({ input, ctx }) => {
-      const result = await ctx.temporal.workflow.execute(
-        'checkInWithQRCodeWorkflow',
-        {
-          args: [input.qrCode],
-          taskQueue: 'default',
-          workflowId: `checkin-${input.qrCode}-${Date.now()}`,
-        }
-      );
-      return result;
-    }),
-  
-  /**
-   * キャンセル
-   */
-  cancel: protectedProcedure
-    .input(z.object({ 
-      bookingId: z.string().uuid(),
-      reason: z.string().optional(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const result = await ctx.temporal.workflow.execute(
-        'cancelBookingWorkflow',
-        {
-          args: [input.bookingId, input.reason],
-          taskQueue: 'default',
-          workflowId: `booking-cancel-${input.bookingId}-${Date.now()}`,
-        }
-      );
-      return result;
-    }),
-  
-  /**
-   * ユーザーの予約一覧取得
-   */
-  listMine: protectedProcedure
-    .input(z.object({
-      status: z.enum(['confirmed', 'cancelled', 'attended', 'no_show']).optional(),
-      limit: z.number().min(1).max(100).default(20),
-      offset: z.number().min(0).default(0),
-    }))
-    .query(async ({ input, ctx }) => {
-      // Action 呼び出し（Read操作なのでWorkflowを経由しない）
-      const { listBookingsByUserAction } = await import('../actions/booking');
-      const result = await listBookingsByUserAction(ctx.user.id, input);
-      return result;
-    }),
-  
-  /**
-   * 予約詳細取得
-   */
-  getById: protectedProcedure
-    .input(bookingIdSchema)
-    .query(async ({ input, ctx }) => {
-      const { getBookingByIdAction } = await import('../actions/booking');
-      const result = await getBookingByIdAction(input.id);
-      return result;
-    }),
-});
-```
+**⚠️ 設計方針**: 
+- 入場処理（QRコード読み取り → Booking更新 → Payment更新）はWorkflowで実装
+- 各Activityは単一テーブルの操作に専念
+- データを読んで判断する処理はWorkflowの責務
 
 ---
 
@@ -1116,110 +650,20 @@ bookings (1) ←→ (1) payments  // 1対1リレーション
 
 ## Activity関数一覧
 
-### Booking Activities
+実装済みのActivity関数については以下のファイルを参照:
 
-```typescript
-// CRUD
-createBookingActivity(db: Database) => (data: BookingCreateInput): ResultAsync<Booking, BookingError>
-getBookingByIdActivity(db: Database) => (id: string): ResultAsync<Booking | null, BookingError>
-getBookingByQrCodeActivity(db: Database) => (qrCode: string): ResultAsync<Booking | null, BookingError>
-listBookingsActivity(db: Database) => (params: BookingQueryInput): ResultAsync<Booking[], BookingError>
-listBookingsByUserActivity(db: Database) => (userId: string, params?): ResultAsync<Booking[], BookingError>
-listBookingsByExperienceActivity(db: Database) => (experienceId: string, params?): ResultAsync<Booking[], BookingError>
-updateBookingActivity(db: Database) => (id: string, patch: BookingUpdateInput): ResultAsync<Booking | null, BookingError>
-deleteBookingActivity(db: Database) => (id: string): ResultAsync<boolean, BookingError>
+- **Booking Activities** → `backend/src/activities/db/models/booking.ts`
+  - CRUD操作: `insertBooking`, `findBookingById`, `findBookingByQrCode`, `listBookings`, `updateBooking`, etc.
+  - ビジネスロジック: `listAttendedBookingsByUser`, `hasUserAttendedExperience`
 
-// Business Logic
-listAttendedBookingsByUserActivity(db: Database) => (userId: string): ResultAsync<Booking[], BookingError>
-hasUserAttendedExperienceActivity(db: Database) => (userId: string, experienceId: string): ResultAsync<boolean, BookingError>
-```
+- **Payment Activities** → `backend/src/activities/db/models/payment.ts`
+  - CRUD操作: `insertPayment`, `findPaymentById`, `findPaymentByBookingId`, `updatePayment`, etc.
+  - ビジネスロジック: `completePayment`, `refundPayment`
 
 **⚠️ 設計方針**: 
 - 入場処理（QRコード読み取り → Booking更新 → Payment更新）はWorkflowで実装
 - 各Activityは単一テーブルの操作に専念
 - データを読んで判断する処理はWorkflowの責務
-
-### Payment Activities
-
-```typescript
-// CRUD
-createPaymentActivity(db: Database) => (data: PaymentCreateInput): ResultAsync<Payment, PaymentError>
-getPaymentByIdActivity(db: Database) => (id: string): ResultAsync<Payment | null, PaymentError>
-getPaymentByBookingIdActivity(db: Database) => (bookingId: string): ResultAsync<Payment | null, PaymentError>
-listPaymentsActivity(db: Database) => (params: PaymentQueryInput): ResultAsync<Payment[], PaymentError>
-updatePaymentActivity(db: Database) => (id: string, patch: PaymentUpdateInput): ResultAsync<Payment | null, PaymentError>
-deletePaymentActivity(db: Database) => (id: string): ResultAsync<boolean, PaymentError>
-
-// Business Logic
-completePaymentActivity(db: Database) => (bookingId: string, paymentIntentId?: string): ResultAsync<Payment, PaymentError>
-refundPaymentActivity(bookingId: string, refundId?: string): Promise<Result<Payment>>
-```
-
----
-````
-**experienceAssets.ts**:
-```typescript
-import { z } from 'zod';
-import { publicProcedure, protectedProcedure, router } from './base';
-
-export const experienceAssetsRouter = router({
-  /**
-   * アクセス可能なコンテンツ一覧取得
-   */
-  listAccessible: protectedProcedure
-    .input(z.object({
-      experienceId: z.string().uuid(),
-      contentTiming: z.enum(['before', 'after', 'anytime']).optional(),
-    }))
-    .query(async ({ input, ctx }) => {
-      const { getAccessibleAssets } = await import('../actions/experienceAssets');
-      const result = await getAccessibleAssets(
-        ctx.user.id,
-        input.experienceId,
-        input.contentTiming
-      );
-      return result;
-    }),
-  
-  /**
-   * コンテンツアクセス権限チェック
-   */
-  checkAccess: protectedProcedure
-    .input(z.object({ assetId: z.string().uuid() }))
-    .query(async ({ input, ctx }) => {
-      const { checkAssetAccess } = await import('../actions/experienceAssets');
-      const result = await checkAssetAccess(ctx.user.id, input.assetId);
-      return result;
-    }),
-  
-  /**
-   * Experience の Before コンテンツ取得（Public + 予約者限定）
-   */
-  listBefore: publicProcedure
-    .input(z.object({ experienceId: z.string().uuid() }))
-    .query(async ({ input, ctx }) => {
-      // 未ログインの場合は Public のみ、ログイン済みならアクセス可能なもの全て
-      if (!ctx.user) {
-        const { listExperienceAssetsByAccessLevelAction } = await import('../actions/experienceAssets');
-        return await listExperienceAssetsByAccessLevelAction(input.experienceId, 'public', 'before');
-      }
-      
-      const { getAccessibleAssets } = await import('../actions/experienceAssets');
-      return await getAccessibleAssets(ctx.user.id, input.experienceId, 'before');
-    }),
-  
-  /**
-   * Experience の After コンテンツ取得（体験済み限定）
-   */
-  listAfter: protectedProcedure
-    .input(z.object({ experienceId: z.string().uuid() }))
-    .query(async ({ input, ctx }) => {
-      const { getAccessibleAssets } = await import('../actions/experienceAssets');
-      const result = await getAccessibleAssets(ctx.user.id, input.experienceId, 'after');
-      return result;
-    }),
-});
-```
 
 ---
 

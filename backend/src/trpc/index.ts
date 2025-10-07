@@ -6,6 +6,7 @@
 import { router } from './base';
 import { organizationRouter } from './organization';
 import { brandRouter } from './brand';
+import { bookingRouter } from './booking';
 
 /**
  * App Router - 全てのtRPCルーターを統合
@@ -13,6 +14,7 @@ import { brandRouter } from './brand';
 export const appRouter = router({
     organization: organizationRouter,
     brand: brandRouter,
+    booking: bookingRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -3,7 +3,6 @@
 
 // Organization Workflows
 export {
-    createOrganizationWorkflow,
     createOrganizationWithWorkosWorkflow,
 } from './organization';
 
@@ -14,3 +13,9 @@ export {
     deleteEndUserWorkflow,
 } from './endUser';
 
+// Booking Workflows
+export {
+    createBookingWorkflow,
+    checkInWithQRCodeWorkflow,
+    cancelBookingWorkflow,
+} from './booking';

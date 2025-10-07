@@ -7,3 +7,4 @@
 
 export * from './organization';
 export * from './endUser';
+export * from './booking';
