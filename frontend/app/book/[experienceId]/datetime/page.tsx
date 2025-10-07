@@ -1,9 +1,13 @@
 "use client"
 
+import { Header } from "@/components/shared/header"
+import { Footer } from "@/components/shared/footer"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, ArrowLeft, Calendar, Clock } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
+import { getExperienceById } from "@/lib/constants"
+import { notFound } from "next/navigation"
 
 // Mock data for available time slots
 const getAvailableSlots = () => {
@@ -38,9 +42,14 @@ const getAvailableSlots = () => {
 }
 
 export default function DateTimePage({ params }: { params: { experienceId: string } }) {
+  const experience = getExperienceById(params.experienceId)
   const [selectedDate, setSelectedDate] = useState<string>("")
   const [selectedTime, setSelectedTime] = useState<string>("")
   const availableSlots = getAvailableSlots()
+
+  if (!experience) {
+    notFound()
+  }
 
   const handleContinue = () => {
     if (selectedDate && selectedTime) {
@@ -55,21 +64,7 @@ export default function DateTimePage({ params }: { params: { experienceId: strin
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="border-b border-gray-200 bg-white sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex justify-between items-center h-16">
-            <Link href="/" className="text-2xl font-bold text-black">
-              i'll be
-            </Link>
-            <div className="flex items-center space-x-6">
-              <Button variant="ghost" size="sm" className="text-black">
-                LOGIN
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Header />
 
       {/* Progress Bar */}
       <div className="bg-gray-100 py-4">
@@ -176,7 +171,7 @@ export default function DateTimePage({ params }: { params: { experienceId: strin
                   <div className="space-y-3 mb-6">
                     <div className="flex justify-between">
                       <span className="text-gray-600">体験</span>
-                      <span className="font-medium">闇の館VR</span>
+                      <span className="font-medium">{experience.title}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">日付</span>
@@ -221,6 +216,8 @@ export default function DateTimePage({ params }: { params: { experienceId: strin
           </div>
         </div>
       </section>
+
+      <Footer />
     </div>
   )
 }

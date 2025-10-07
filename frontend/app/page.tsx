@@ -1,116 +1,44 @@
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import Link from "next/link"
+import { Header } from "@/components/shared/header"
+import { Footer } from "@/components/shared/footer"
+import { ExperienceHero } from "@/components/features/experience/experience-hero"
+import { ExperienceCard } from "@/components/features/experience/experience-card"
+import { MOCK_EXPERIENCES, getFeaturedExperiences } from "@/lib/constants"
 
 export default function HomePage() {
+  const featuredExperiences = getFeaturedExperiences(4)
+  const mainFeatured = featuredExperiences[0]
+  const secondaryFeatured = featuredExperiences.slice(1)
+
   return (
     <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="border-b border-gray-200 bg-white sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex justify-between items-center h-16">
-            <div className="text-2xl font-bold text-black">i'll be</div>
-            <div className="flex items-center space-x-6">
-              <Button variant="ghost" size="sm" className="text-black">
-                LOGIN
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Header />
 
       <section className="relative">
         {/* Main Featured Content */}
-        <div className="relative h-[70vh] overflow-hidden">
-          <div className="absolute inset-0">
-            <img
-              src="/dark-haunted-mansion-vr-horror-experience-with-eer.jpg"
-              alt="闇の館VR体験"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/70" />
-          </div>
-
-          <div className="relative h-full flex items-center">
-            <div className="max-w-7xl mx-auto px-6 w-full">
-              <div className="max-w-xl">
-                <div className="p-8 bg-black/60 backdrop-blur-sm rounded-lg">
-                  <div className="text-xs tracking-[0.3em] text-white/90 mb-4 font-mono drop-shadow-2xl">
-                    FEATURED / 01
-                  </div>
-                  <h1 className="text-7xl md:text-8xl font-black text-white mb-4 leading-[0.85] tracking-tight drop-shadow-2xl">
-                    闇の館
-                    <br />
-                    VR
-                  </h1>
-                  <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl">
-                    呪われた洋館で繰り広げられる恐怖体験。
-                  </p>
-                  <div className="flex items-center space-x-6 text-white/90 text-sm mb-8 drop-shadow-2xl">
-                    <span>渋谷VRパーク</span>
-                    <span className="w-1 h-1 bg-white/70 rounded-full"></span>
-                    <span>45分</span>
-                  </div>
-                  <Link href="/experiences/yami-no-yakata-vr">
-                    <Button size="lg" className="bg-white text-black hover:bg-gray-100 font-medium drop-shadow-lg">
-                      予約する
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ExperienceHero
+          id={mainFeatured.id}
+          title={mainFeatured.title}
+          subtitle={mainFeatured.subtitle}
+          category={mainFeatured.category}
+          image={mainFeatured.image}
+          location={mainFeatured.location}
+          duration={mainFeatured.duration}
+        />
 
         {/* Secondary Featured Grid */}
         <div className="bg-black text-white py-16">
           <div className="max-w-7xl mx-auto px-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {/* Featured 02 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[4/5] overflow-hidden mb-4">
-                  <img
-                    src="/giant-warriors-battle-immersive-theater-experience.jpg"
-                    alt="巨神戦記"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 02</div>
-                <h3 className="text-2xl font-bold mb-2">巨神戦記</h3>
-                <p className="text-white/70 text-sm mb-3">イマーシブシアター</p>
-                <p className="text-white/60 text-xs">お台場 • 90分</p>
-              </div>
-
-              {/* Featured 03 */}
-              <div className="group cursor-pointer">
-                <div className="aspect-[4/5] overflow-hidden mb-4">
-                  <img
-                    src="/magical-fantasy-maze-with-glowing-portals-and-myst.jpg"
-                    alt="魔法の迷宮"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 03</div>
-                <h3 className="text-2xl font-bold mb-2">魔法の迷宮</h3>
-                <p className="text-white/70 text-sm mb-3">没入型演劇</p>
-                <p className="text-white/60 text-xs">銀座 • 120分</p>
-              </div>
-
-              {/* Featured 04 */}
-              <div className="group cursor-pointer md:col-span-2 lg:col-span-1">
-                <div className="aspect-[4/5] overflow-hidden mb-4">
-                  <img
-                    src="/futuristic-neon-cyberpunk-city-vr-experience-with-.jpg"
-                    alt="ネオン・シティ"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 04</div>
-                <h3 className="text-2xl font-bold mb-2">ネオン・シティ</h3>
-                <p className="text-white/70 text-sm mb-3">VR体験</p>
-                <p className="text-white/60 text-xs">秋葉原 • 60分</p>
-              </div>
+              {secondaryFeatured.map((experience, index) => (
+                <ExperienceCard
+                  key={experience.id}
+                  {...experience}
+                  featured={true}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -365,6 +293,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <Footer />
     </div>
   )
 }
