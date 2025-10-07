@@ -151,14 +151,27 @@ async function run() {
     };
 
     // Temporal Server への接続
-    const connection = await NativeConnection.connect({
-        address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-    });
+    const temporalAddress = process.env.TEMPORAL_ADDRESS || 'localhost:7233';
+    const temporalNamespace = process.env.TEMPORAL_NAMESPACE || 'default';
+    const temporalApiKey = process.env.TEMPORAL_API_KEY;
+
+    // Temporal Cloud用のTLS設定
+    const connectionOptions: Parameters<typeof NativeConnection.connect>[0] = {
+        address: temporalAddress,
+    };
+
+    // API Keyが設定されている場合はTemporal Cloud接続（TLS有効）
+    if (temporalApiKey) {
+        connectionOptions.tls = {}; // 空オブジェクトでデフォルトTLS有効化
+        connectionOptions.apiKey = temporalApiKey;
+    }
+
+    const connection = await NativeConnection.connect(connectionOptions);
 
     // Worker の作成
     const worker = await Worker.create({
         connection,
-        namespace: 'default',
+        namespace: temporalNamespace,
         taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
         workflowsPath: resolve(__dirname, 'workflows'),
         activities,
@@ -166,7 +179,9 @@ async function run() {
 
     console.log('Temporal Worker started successfully');
     console.log(`  Task Queue: ${process.env.TEMPORAL_TASK_QUEUE || 'main'}`);
-    console.log(`  Temporal Address: ${process.env.TEMPORAL_ADDRESS || 'localhost:7233'}`);
+    console.log(`  Temporal Address: ${temporalAddress}`);
+    console.log(`  Temporal Namespace: ${temporalNamespace}`);
+    console.log(`  Temporal Cloud: ${temporalApiKey ? 'Enabled (API Key)' : 'Disabled (Local)'}`);
     console.log(`  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     console.log(`  Auth0: ${auth0Config.domain ? 'Configured' : 'Not configured'}`);
     console.log(`  WorkOS: ${workosConfig.apiKey ? 'Configured' : 'Not configured'}`);

@@ -1,0 +1,24 @@
+services:
+  trpc:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: alllbe-backend:latest
+    container_name: alllbe-trpc
+    command: [ "tsx", "src/server.ts" ]
+    env_file:
+      - backend/.env
+    ports:
+      - "4000:4000"
+    restart: always
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: alllbe-backend:latest
+    container_name: alllbe-worker
+    command: [ "tsx", "src/worker.ts" ]
+    env_file:
+      - backend/.env
+    restart: unless-stopped

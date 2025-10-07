@@ -40,15 +40,31 @@ let temporalClient: Client | null = null;
 
 async function getTemporalClient(): Promise<Client> {
     if (!temporalClient) {
-        const connection = await Connection.connect({
-            address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
-        });
+        const temporalAddress = process.env.TEMPORAL_ADDRESS || 'localhost:7233';
+        const temporalNamespace = process.env.TEMPORAL_NAMESPACE || 'default';
+        const temporalApiKey = process.env.TEMPORAL_API_KEY;
+
+        // Temporal Cloud用のTLS設定
+        const connectionOptions: Parameters<typeof Connection.connect>[0] = {
+            address: temporalAddress,
+        };
+
+        // API Keyが設定されている場合はTemporal Cloud接続（TLS有効）
+        if (temporalApiKey) {
+            connectionOptions.tls = {}; // 空オブジェクトでデフォルトTLS有効化
+            connectionOptions.apiKey = temporalApiKey;
+        }
+
+        const connection = await Connection.connect(connectionOptions);
+
         temporalClient = new Client({
             connection,
-            namespace: 'default',
+            namespace: temporalNamespace,
         });
         trpcLogger.info('Temporal Client connected', {
-            address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
+            address: temporalAddress,
+            namespace: temporalNamespace,
+            cloud: temporalApiKey ? 'Enabled (API Key)' : 'Disabled (Local)',
         });
     }
     return temporalClient;
@@ -86,5 +102,7 @@ trpcLogger.info(`tRPC Server started`, {
     trpcEndpoint: `http://localhost:${port}/trpc`,
     healthEndpoint: `http://localhost:${port}/health`,
     temporalAddress: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
+    temporalNamespace: process.env.TEMPORAL_NAMESPACE || 'default',
+    temporalCloud: process.env.TEMPORAL_API_KEY ? 'Enabled' : 'Disabled',
     temporalTaskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
 });

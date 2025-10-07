@@ -77,6 +77,59 @@ npm run dev:trpc
 npm run dev:temporal
 ```
 
+## 起動方法（本番用 Docker + .env）
+
+1. backend/.env を編集し、必要な環境変数（DB, Temporal, 認証など）を設定
+2. Docker イメージをビルド
+
+```bash
+# プロジェクトルートで実行
+# イメージビルド（trpc/worker 共通）
+docker compose build
+
+# サービス起動（.env の内容が各サービスに適用されます）
+docker compose up -d
+```
+
+- trpc サーバー: http://localhost:3000
+- Temporal Worker: backend/src/worker.ts
+- Temporal Server/DB も docker-compose で自動起動
+
+環境変数例（backend/.env）:
+```
+DATABASE_URL=postgres://alllbe:password@db:5432/alllbe
+
+# Temporal Cloud設定（本番環境）
+TEMPORAL_ADDRESS=ap-northeast-1.aws.api.temporal.io:7233
+TEMPORAL_NAMESPACE=quickstart-alllbe-proto.f1qvm
+TEMPORAL_API_KEY=your_temporal_api_key_here
+
+# または、ローカル開発環境の場合
+# TEMPORAL_ADDRESS=temporal:7233
+# TEMPORAL_NAMESPACE=default
+# （TEMPORAL_API_KEYは不要）
+
+AUTH0_DOMAIN=xxx
+WORKOS_API_KEY=xxx
+...etc
+```
+
+### Temporal Cloud vs ローカル開発
+
+**Temporal Cloud使用時**:
+- `TEMPORAL_ADDRESS`: Temporal Cloudのエンドポイント（例: `ap-northeast-1.aws.api.temporal.io:7233`）
+- `TEMPORAL_NAMESPACE`: Temporal Cloudで作成したNamespace
+- `TEMPORAL_API_KEY`: Temporal Cloudで発行したAPI Key（必須）
+- TLS接続が自動的に有効化されます
+
+**ローカル開発時**:
+- `TEMPORAL_ADDRESS`: `localhost:7233` または `temporal:7233`（Docker環境）
+- `TEMPORAL_NAMESPACE`: `default`
+- `TEMPORAL_API_KEY`: 設定不要
+- TLS接続は無効（平文通信）
+
+**詳細な設計・運用方針は `.github/instructions/architecture.instructions.md` を参照してください。**
+
 ## 参考資料
 
 - [Temporal TypeScript Samples](https://github.com/temporalio/samples-typescript/tree/main)
