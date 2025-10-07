@@ -222,3 +222,52 @@ export async function createOrganizationWithWorkosWorkflow(
         throw error;
     }
 }
+
+/**
+ * Organization + WorkOS Organization 削除 Workflow
+ * 
+ * SAGA パターン:
+ * 1. 関連するBrand・Experienceなどを削除（CASCADE）
+ * 2. DB Organization 削除
+ * 3. WorkOS Organization 削除
+ * 4. 失敗時は可能な限り元の状態に戻す
+ * 
+ * @throws ApplicationFailure - Activity呼び出しのエラーはそのまま伝播
+ */
+export async function deleteOrganizationWithWorkosWorkflow(
+    organizationId: string
+): Promise<{ success: boolean; deletedResourceCounts: { brands: number; experiences: number } }> {
+    const compensations: Compensation[] = [];
+    const deletedResources = { brands: 0, experiences: 0 };
+
+    try {
+        log.info('Starting Organization deletion', { organizationId });
+
+        // Step 1: DB Organization削除（CASCADE削除で関連データも自動削除）
+        // この時点で Brands, Experiences, Experience Assets なども削除される
+        log.info('Deleting DB Organization with CASCADE', { organizationId });
+        await removeOrganization(organizationId);
+
+        // Step 2: WorkOS Organization削除
+        log.info('Deleting WorkOS Organization', { organizationId });
+        await deleteWorkosOrganization(organizationId);
+
+        log.info('Organization deletion successful', {
+            organizationId,
+            deletedResourceCounts: deletedResources
+        });
+
+        return {
+            success: true,
+            deletedResourceCounts: deletedResources
+        };
+
+    } catch (error) {
+        log.error('Organization deletion failed', { error, organizationId });
+
+        // 削除の補償処理は複雑になりがちなので、ここでは失敗をログに記録
+        // 必要に応じて手動での修復作業が必要になる場合がある
+        await compensate(compensations);
+        throw error;
+    }
+}

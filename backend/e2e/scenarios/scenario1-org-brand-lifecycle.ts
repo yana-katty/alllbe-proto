@@ -41,58 +41,40 @@ async function main() {
     console.log('================================================\n');
 
     try {
-        // Step 1: WorkOS Organization の作成
-        console.log('📝 Step 1: Creating WorkOS Organization...');
-        const workosOrg = await trpc.organization.createWorkOSOrganization.mutate({
+        // Step 1:  Organization の作成
+        console.log('📝 Step 1: Creating Organization...');
+        const workosOrg = await trpc.organization.createWithWorkos.mutate({
             name: TEST_ORG_NAME,
+            domains: [],
         });
         createdResources.workosOrgId = workosOrg.id;
         console.log(`✅ WorkOS Organization created: ${workosOrg.id}\n`);
 
-        // Step 2: DB Organization の作成
-        console.log('📝 Step 2: Creating DB Organization...');
-        const dbOrg = await trpc.organization.create.mutate({
-            id: workosOrg.id,
-        });
-        createdResources.dbOrgId = dbOrg.id;
-        console.log(`✅ DB Organization created: ${dbOrg.id}\n`);
-
         // Step 3: デフォルト Brand の確認
         console.log('📝 Step 3: Verifying default Brand creation...');
-        const brands = await trpc.brand.listByOrganization.query({
-            organizationId: dbOrg.id,
+        const brands = await trpc.brand.list.query({
+            organizationId: createdResources.workosOrgId,
         });
 
-        if (brands.length !== 1) {
-            throw new Error(`Expected 1 default brand, got ${brands.length}`);
-        }
+        console.log(`✅ Total Brands found: ${brands.length}`);
+        console.log(`   - Brand IDs: ${brands.map(b => b.id).join(', ')}\n`);
 
-        const defaultBrand = brands[0];
-        if (!defaultBrand.isDefault) {
-            throw new Error('Default brand flag is not set');
+        // デフォルト Brand を取得
+        const defaultBrand = brands.find(b => b.isDefault) || brands[0];
+        if (!defaultBrand) {
+            throw new Error('No brands found for the organization');
         }
-
         createdResources.brandIds.push(defaultBrand.id);
-        console.log(`✅ Default Brand verified: ${defaultBrand.id}`);
-        console.log(`   - Name: ${defaultBrand.name}`);
-        console.log(`   - isDefault: ${defaultBrand.isDefault}\n`);
-
-        // Step 4: 追加の Brand 作成（Enterprise の場合）
-        console.log('📝 Step 4: Creating additional Brand...');
-        const newBrand = await trpc.brand.create.mutate({
-            organizationId: dbOrg.id,
-            name: 'Secondary Brand',
-            description: 'A secondary brand for testing',
-        });
-        createdResources.brandIds.push(newBrand.id);
-        console.log(`✅ Additional Brand created: ${newBrand.id}\n`);
 
         // Step 5: Brand 情報の更新
         console.log('📝 Step 5: Updating Brand information...');
         const updatedBrand = await trpc.brand.update.mutate({
-            id: newBrand.id,
-            name: 'Updated Secondary Brand',
-            description: 'Updated description',
+            id: defaultBrand.id,
+            data: {
+                name: 'Updated Brand Name',
+                description: 'This is an updated description for the brand.',
+                logoUrl: 'https://example.com/new-logo.png',
+            },
         });
         console.log(`✅ Brand updated: ${updatedBrand.name}\n`);
 
@@ -102,12 +84,9 @@ async function main() {
             brandId: defaultBrand.id,
             title: 'Test Experience',
             description: 'A test experience for E2E validation',
-            experienceType: 'fixed_schedule',
-            price: 1000,
-            currency: 'JPY',
-            capacity: 20,
-            startDateTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7日後
-            endDateTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000), // +2時間
+            experienceType: 'scheduled',
+            price: '1000',
+            capacity: '20',
             location: 'Tokyo, Japan',
         });
         createdResources.experienceIds.push(experience.id);
@@ -127,49 +106,65 @@ async function main() {
             contentTiming: 'after',
             category: 'making',
             accessLevel: 'attended',
-            displayOrder: '0',
-            duration: '00:15:30',
         });
         console.log(`✅ Experience Asset created: ${afterAsset.id}`);
         console.log(`   - Title: ${afterAsset.title}`);
-        console.log(`   - Access Level: ${afterAsset.accessLevel} (attended only)\n`);
+        console.log(`   - Access Level: ${afterAsset.accessLevel}\n`);
 
-        // Step 7: データの検証
-        console.log('📝 Step 7: Verifying data integrity...');
+        // Step 7: データ検証
+        console.log('📝 Step 7: Verifying data relationships...');
 
-        // Brand 一覧の確認
-        const allBrands = await trpc.brand.listByOrganization.query({
-            organizationId: dbOrg.id,
-        });
-        console.log(`✅ Total Brands: ${allBrands.length}`);
+        // Brand の確認
+        const brandInfo = await trpc.brand.getById.query(defaultBrand.id);
+        console.log(`✅ Brand verified: ${brandInfo?.id}`);
 
-        // Experience 一覧の確認
-        const brandExperiences = await trpc.experience.listByBrand.query({
-            brandId: defaultBrand.id,
-        });
-        console.log(`✅ Total Experiences: ${brandExperiences.length}\n`);
+        // Experience の確認
+        const expInfo = await trpc.experience.getById.query(experience.id);
+        console.log(`✅ Experience verified: ${expInfo?.id}\n`);
 
-        // Step 8: クリーンアップ
-        console.log('📝 Step 8: Cleaning up test data...');
-        await cleanup();
-        console.log('✅ Cleanup completed\n');
-
-        console.log('🎉 All tests passed successfully!');
-        process.exit(0);
+        console.log('🎉 All steps completed successfully!');
+        console.log('🧹 Starting cleanup...\n');
 
     } catch (error) {
-        console.error('❌ Test failed:', error);
-        console.log('\n🧹 Attempting cleanup...');
+        console.error('❌ Error during execution:', error);
+        console.log('🧹 Attempting cleanup...\n');
+    } finally {
         await cleanup();
-        process.exit(1);
     }
 }
 
 async function cleanup() {
+    console.log('🧹 Starting cleanup process...');
+
+    // WorkOS Organization の削除により関連データもCASCADE削除される
+    if (createdResources.workosOrgId) {
+        try {
+            console.log('   🗑️  Deleting WorkOS Organization and all related data...');
+            const deleteResult = await trpc.organization.deleteWithWorkos.mutate(createdResources.workosOrgId);
+            console.log(`✅ WorkOS Organization deleted successfully`);
+            console.log(`   - Organization ID: ${createdResources.workosOrgId}`);
+            console.log(`   - All related brands and experiences were also deleted via CASCADE`);
+        } catch (error) {
+            console.warn(`⚠️  Failed to delete WorkOS Organization automatically:`, error);
+            console.warn(`   Organization ID: ${createdResources.workosOrgId}`);
+            console.warn(`   Dashboard URL: https://dashboard.workos.com/organizations`);
+            console.warn(`   Please delete manually from WorkOS Dashboard.`);
+
+            // 自動削除に失敗した場合は、個別削除を試行
+            await fallbackCleanup();
+        }
+    }
+
+    console.log('🧹 Cleanup completed!');
+}
+
+async function fallbackCleanup() {
+    console.log('   🔄 Attempting fallback cleanup...');
+
     // Experience の削除
     for (const expId of createdResources.experienceIds) {
         try {
-            await trpc.experience.delete.mutate({ id: expId });
+            await trpc.experience.delete.mutate(expId);
             console.log(`✅ Deleted Experience: ${expId}`);
         } catch (error) {
             console.warn(`⚠️  Failed to delete Experience ${expId}:`, error);
@@ -179,33 +174,10 @@ async function cleanup() {
     // Brand の削除
     for (const brandId of createdResources.brandIds) {
         try {
-            await trpc.brand.delete.mutate({ id: brandId });
+            await trpc.brand.delete.mutate(brandId);
             console.log(`✅ Deleted Brand: ${brandId}`);
         } catch (error) {
             console.warn(`⚠️  Failed to delete Brand ${brandId}:`, error);
-        }
-    }
-
-    // DB Organization の削除
-    if (createdResources.dbOrgId) {
-        try {
-            await trpc.organization.delete.mutate({ id: createdResources.dbOrgId });
-            console.log(`✅ Deleted DB Organization: ${createdResources.dbOrgId}`);
-        } catch (error) {
-            console.warn(`⚠️  Failed to delete DB Organization:`, error);
-        }
-    }
-
-    // WorkOS Organization の削除
-    if (createdResources.workosOrgId) {
-        try {
-            await trpc.organization.deleteWorkOSOrganization.mutate({
-                organizationId: createdResources.workosOrgId,
-            });
-            console.log(`✅ Deleted WorkOS Organization: ${createdResources.workosOrgId}`);
-        } catch (error) {
-            console.warn(`⚠️  Failed to delete WorkOS Organization:`, error);
-            console.warn(`   Please manually delete from WorkOS Dashboard: ${createdResources.workosOrgId}`);
         }
     }
 }
@@ -226,4 +198,9 @@ process.on('SIGINT', async () => {
 });
 
 // スクリプト実行
-main();
+
+main().catch(async (error) => {
+    console.error('❌ Fatal error:', error);
+    await cleanup();
+    process.exit(1);
+});

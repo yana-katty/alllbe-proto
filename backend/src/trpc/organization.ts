@@ -12,6 +12,7 @@ import { WorkflowIdReusePolicy } from '@temporalio/client';
 import { ApplicationFailure } from '@temporalio/common';
 import {
     createOrganizationWithWorkosWorkflow,
+    deleteOrganizationWithWorkosWorkflow,
 } from '../workflows/organization';
 import { organizationCreateSchema, organizationUpdateSchema, organizationQuerySchema } from '../activities/db/models/organization';
 
@@ -100,7 +101,7 @@ export const organizationRouter = router({
 
                 const handle = await ctx.temporal.workflow.start(createOrganizationWithWorkosWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: 'main',
                     workflowId,
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
@@ -120,6 +121,47 @@ export const organizationRouter = router({
                 throw new TRPCError({
                     code: 'INTERNAL_SERVER_ERROR',
                     message: error instanceof Error ? error.message : 'Failed to create organization with WorkOS',
+                    cause: error,
+                });
+            }
+        }),
+
+    /**
+     * WorkOS Organization + DB Organization を削除（CASCADE削除）
+     * 
+     * ApplicationFailure のエラーハンドリング例:
+     * - WorkOS Organization 削除失敗
+     * - DB Organization 削除失敗
+     * - 関連リソース削除失敗
+     */
+    deleteWithWorkos: publicProcedure
+        .input(z.string().min(1, 'Organization ID is required'))
+        .mutation(async ({ input, ctx }) => {
+            try {
+                const workflowId = `organization-workos-delete-${input}-${Date.now()}`;
+
+                const handle = await ctx.temporal.workflow.start(deleteOrganizationWithWorkosWorkflow, {
+                    args: [input],
+                    taskQueue: 'main',
+                    workflowId,
+                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                });
+
+                return await handle.result();
+            } catch (error) {
+                // ApplicationFailure のエラーを tRPC エラーコードにマッピング
+                if (error instanceof ApplicationFailure) {
+                    throw new TRPCError({
+                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
+                        message: error.message,
+                        cause: error,
+                    });
+                }
+
+                // その他のエラー
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to delete organization with WorkOS',
                     cause: error,
                 });
             }

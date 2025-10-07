@@ -7,6 +7,8 @@
 
 import { Worker, NativeConnection } from '@temporalio/worker';
 import { config } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { initializeTemporalRuntime } from './workflows/logger';
 import { getDatabase } from './activities/db/connection';
 
@@ -25,6 +27,10 @@ import * as workosActivities from './activities/auth/workos';
 
 // 環境変数の読み込み
 config();
+
+// ESM対応: __dirname の取得
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function run() {
     // Temporal Runtime Logger の初期化
@@ -154,7 +160,7 @@ async function run() {
         connection,
         namespace: 'default',
         taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'main',
-        workflowsPath: require.resolve('./workflows'),
+        workflowsPath: resolve(__dirname, 'workflows'),
         activities,
     });
 

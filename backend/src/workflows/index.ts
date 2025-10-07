@@ -4,6 +4,7 @@
 // Organization Workflows
 export {
     createOrganizationWithWorkosWorkflow,
+    deleteOrganizationWithWorkosWorkflow,
 } from './organization';
 
 // Brand Workflows

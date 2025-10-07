@@ -177,7 +177,7 @@ export const userRouter = router({
       const workflowId = `user-${input.email}`;
       const handle = await client.workflow.start(createUserWorkflow, {
         args: [input],
-        taskQueue: 'default',
+        taskQueue: 'main',
         workflowId,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });

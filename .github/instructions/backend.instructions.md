@@ -453,7 +453,7 @@ export const userRouter = router({
     .mutation(async ({ input }) => {
       const handle = await client.workflow.start(createUserWorkflow, {
         args: [input],
-        taskQueue: 'default',
+        taskQueue: 'main',
         workflowId: `user-${input.email}`,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });

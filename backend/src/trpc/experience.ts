@@ -104,7 +104,7 @@ export const experienceRouter = router({
                 const workflowId = `exp-create-${input.brandId}`;
                 const handle = await ctx.temporal.workflow.start(createExperienceWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: 'main',
                     workflowId,
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
@@ -132,7 +132,7 @@ export const experienceRouter = router({
                 const workflowId = `exp-update-${input.id}`;
                 const handle = await ctx.temporal.workflow.start(updateExperienceWorkflow, {
                     args: [input.id, input.data],
-                    taskQueue: 'default',
+                    taskQueue: 'main',
                     workflowId,
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
@@ -160,7 +160,7 @@ export const experienceRouter = router({
                 const workflowId = `exp-publish-${input.id}`;
                 const handle = await ctx.temporal.workflow.start(publishExperienceWorkflow, {
                     args: [input.id],
-                    taskQueue: 'default',
+                    taskQueue: 'main',
                     workflowId,
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
@@ -188,7 +188,7 @@ export const experienceRouter = router({
                 const workflowId = `exp-delete-${input}`;
                 const handle = await ctx.temporal.workflow.start(deleteExperienceWorkflow, {
                     args: [input],
-                    taskQueue: 'default',
+                    taskQueue: 'main',
                     workflowId,
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });

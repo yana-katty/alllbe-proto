@@ -77,7 +77,7 @@ export const userRouter = router({
       
       const handle = await client.workflow.start(createUserWorkflow, {
         args: [input],
-        taskQueue: 'default',
+        taskQueue: 'main',
         workflowId,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });
@@ -96,7 +96,7 @@ export const userRouter = router({
       
       const handle = await client.workflow.start(updateUserWorkflow, {
         args: [input.id, input.data],
-        taskQueue: 'default',
+        taskQueue: 'main',
         workflowId,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });
@@ -112,7 +112,7 @@ export const userRouter = router({
       
       const handle = await client.workflow.start(deleteUserWorkflow, {
         args: [input],
-        taskQueue: 'default',
+        taskQueue: 'main',
         workflowId,
         workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
       });
@@ -135,7 +135,7 @@ export const userRouter = router({
         
         const handle = await client.workflow.start(createUserWorkflow, {
           args: [input],
-          taskQueue: 'default',
+          taskQueue: 'main',
           workflowId,
           workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
         });

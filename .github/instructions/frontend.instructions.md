@@ -57,7 +57,7 @@ const organizations = await trpc.organization.list.query();
 // Temporalワークフローの開始
 const workflowHandle = await temporalClient.workflow.start(MyWorkflow, {
   args: [data],
-  taskQueue: 'default',
+  taskQueue: 'main',
 });
 
 // ステータス確認

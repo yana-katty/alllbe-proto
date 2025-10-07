@@ -210,7 +210,7 @@ export const organizationRouter = router({
             
             const handle = await client.workflow.start(createOrganizationWorkflow, {
                 args: [input],
-                taskQueue: 'default',
+                taskQueue: 'main',
                 workflowId,
                 workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
             });

@@ -362,5 +362,114 @@ describe('Organization Workflows', () => {
         });
 
 
-    })
+    });
+
+    describe('deleteOrganizationWithWorkosWorkflow', () => {
+        it('should delete organization with WorkOS successfully', async () => {
+            // モックアクティビティの定義（vi.fn()を使用）
+            const removeOrganization = vi.fn().mockResolvedValue(true);
+            const deleteWorkosOrganization = vi.fn().mockResolvedValue(true);
+
+            const worker = await createTestWorker({
+                removeOrganization,
+                deleteWorkosOrganization,
+            });
+
+            // Workflow実行
+            const result = await worker.runUntil(
+                testEnv.client.workflow.execute('deleteOrganizationWithWorkosWorkflow', {
+                    workflowId: randomUUID(),
+                    taskQueue: 'test',
+                    args: ['workos-org-123'],
+                })
+            );
+
+            // アサーション: 戻り値の検証
+            expect(result).toBeDefined();
+            expect(result.success).toBe(true);
+            expect(result.deletedResourceCounts).toEqual({
+                brands: 0,
+                experiences: 0,
+            });
+
+            // アサーション: モック関数が期待通りに呼ばれたか検証
+            expect(removeOrganization).toHaveBeenCalledTimes(1);
+            expect(removeOrganization).toHaveBeenCalledWith('workos-org-123');
+
+            expect(deleteWorkosOrganization).toHaveBeenCalledTimes(1);
+            expect(deleteWorkosOrganization).toHaveBeenCalledWith('workos-org-123');
+        });
+
+        it('should fail when DB organization deletion fails', async () => {
+            // モックアクティビティの定義（vi.fn()を使用）
+            // DB削除が失敗するため、WorkOS削除は呼ばれない
+            const removeOrganization = vi.fn().mockRejectedValue(
+                ApplicationFailure.create({
+                    message: 'Organization not found',
+                    type: OrganizationErrorType.NOT_FOUND,
+                    nonRetryable: true,
+                })
+            );
+            const deleteWorkosOrganization = vi.fn();
+
+            const worker = await createTestWorker({
+                removeOrganization,
+                deleteWorkosOrganization,
+            });
+
+            // Workflow実行（エラーが期待される）
+            await expect(
+                worker.runUntil(
+                    testEnv.client.workflow.execute('deleteOrganizationWithWorkosWorkflow', {
+                        workflowId: randomUUID(),
+                        taskQueue: 'test',
+                        args: ['non-existent-org'],
+                    })
+                )
+            ).rejects.toThrow();
+
+            // アサーション: モック関数が呼ばれたか検証
+            expect(removeOrganization).toHaveBeenCalledTimes(1);
+            expect(removeOrganization).toHaveBeenCalledWith('non-existent-org');
+
+            // DB削除が失敗した場合、WorkOS削除は呼ばれない
+            expect(deleteWorkosOrganization).not.toHaveBeenCalled();
+        });
+
+        it('should fail when WorkOS organization deletion fails after DB deletion', async () => {
+            // モックアクティビティの定義（vi.fn()を使用）
+            // DB削除は成功、WorkOS削除が失敗
+            const removeOrganization = vi.fn().mockResolvedValue(true);
+            const deleteWorkosOrganization = vi.fn().mockRejectedValue(
+                ApplicationFailure.create({
+                    message: 'WorkOS API error',
+                    type: 'WORKOS_API_ERROR',
+                    nonRetryable: false,
+                })
+            );
+
+            const worker = await createTestWorker({
+                removeOrganization,
+                deleteWorkosOrganization,
+            });
+
+            // Workflow実行（エラーが期待される）
+            await expect(
+                worker.runUntil(
+                    testEnv.client.workflow.execute('deleteOrganizationWithWorkosWorkflow', {
+                        workflowId: randomUUID(),
+                        taskQueue: 'test',
+                        args: ['workos-org-123'],
+                    })
+                )
+            ).rejects.toThrow();
+
+            // アサーション: モック関数が呼ばれたか検証
+            expect(removeOrganization).toHaveBeenCalledTimes(1);
+            expect(removeOrganization).toHaveBeenCalledWith('workos-org-123');
+
+            // リトライされるため複数回呼ばれる可能性がある
+            expect(deleteWorkosOrganization).toHaveBeenCalledWith('workos-org-123');
+        });
+    });
 });
