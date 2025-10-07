@@ -1,3 +1,5 @@
+'use client'
+
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import Link from "next/link"
@@ -5,44 +7,61 @@ import { Header } from "@/components/shared/header"
 import { Footer } from "@/components/shared/footer"
 import { ExperienceHero } from "@/components/features/experience/experience-hero"
 import { ExperienceCard } from "@/components/features/experience/experience-card"
-import { MOCK_EXPERIENCES, getFeaturedExperiences } from "@/lib/constants"
+import { trpc } from "@/lib/trpc"
+import { LoadingSpinner } from "@/components/shared/loading"
 
 export default function HomePage() {
-  const featuredExperiences = getFeaturedExperiences(4)
-  const mainFeatured = featuredExperiences[0]
-  const secondaryFeatured = featuredExperiences.slice(1)
+  // tRPC で公開中のExperienceを取得（最大4件）
+  const { data: experiences, isLoading, error } = trpc.experience.list.useQuery({
+    limit: 4,
+    status: 'published',
+  })
+
+  const mainFeatured = experiences?.[0]
+  const secondaryFeatured = experiences?.slice(1) || []
 
   return (
     <div className="min-h-screen bg-white">
       <Header />
 
-      <section className="relative">
-        {/* Main Featured Content */}
-        <ExperienceHero
-          id={mainFeatured.id}
-          title={mainFeatured.title}
-          subtitle={mainFeatured.subtitle}
-          category={mainFeatured.category}
-          image={mainFeatured.image}
-          location={mainFeatured.location}
-          duration={mainFeatured.duration}
-        />
+      {isLoading ? (
+        <div className="flex justify-center items-center py-40">
+          <LoadingSpinner />
+        </div>
+      ) : error ? (
+        <div className="text-center py-40">
+          <p className="text-red-600 mb-4">データの取得に失敗しました</p>
+          <p className="text-sm text-gray-500">{error.message}</p>
+        </div>
+      ) : mainFeatured ? (
+        <section className="relative">
+          {/* Main Featured Content */}
+          <ExperienceHero
+            id={mainFeatured.id}
+            title={mainFeatured.title}
+            description={mainFeatured.description}
+            coverImageUrl={mainFeatured.coverImageUrl}
+            location={mainFeatured.location}
+            duration={mainFeatured.duration}
+            experienceType={mainFeatured.experienceType}
+          />
 
-        {/* Secondary Featured Grid */}
-        <div className="bg-black text-white py-16">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {secondaryFeatured.map((experience, index) => (
-                <ExperienceCard
-                  key={experience.id}
-                  {...experience}
-                  featured={true}
-                />
-              ))}
+          {/* Secondary Featured Grid */}
+          <div className="bg-black text-white py-16">
+            <div className="max-w-7xl mx-auto px-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {secondaryFeatured.map((experience) => (
+                  <ExperienceCard
+                    key={experience.id}
+                    {...experience}
+                    featured={true}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-6">

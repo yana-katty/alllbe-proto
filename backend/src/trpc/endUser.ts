@@ -11,8 +11,14 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { Client, WorkflowIdReusePolicy } from '@temporalio/client';
+import { ApplicationFailure } from '@temporalio/common';
 import { router, publicProcedure } from './base';
 import { auth0UserCreateInputSchema, auth0UserUpdateInputSchema } from '../activities/auth/auth0/types';
+import { getEndUser } from '../actions/endUser';
+import { getAuth0User, findAuth0UserByEmail } from '../activities/auth/auth0/user';
+import { findUserById } from '../activities/db/models/user';
+import { getDatabase } from '../activities/db/connection';
+import { getAuth0ConfigFromEnv, createAuth0ManagementClient } from '../activities/auth/auth0/auth0Client';
 
 /**
  * EndUser Input Schemas for tRPC
@@ -63,6 +69,36 @@ const defaultWorkflowOptions = {
 const mapTemporalError = (error: unknown, operation: string): TRPCError => {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
+    // ApplicationFailure の場合、詳細情報を含める
+    if (error instanceof ApplicationFailure) {
+        const errorType = error.type || 'UNKNOWN';
+        const errorMessage = error.message || 'No message provided';
+
+        // AUTH0_EMAIL_ALREADY_EXISTS などの特定エラータイプを判定
+        if (errorType.includes('ALREADY_EXISTS')) {
+            return new TRPCError({
+                code: 'CONFLICT',
+                message: `${operation} failed: ${errorMessage} (${errorType})`,
+                cause: error,
+            });
+        }
+
+        if (errorType.includes('NOT_FOUND')) {
+            return new TRPCError({
+                code: 'NOT_FOUND',
+                message: `${operation} failed: ${errorMessage} (${errorType})`,
+                cause: error,
+            });
+        }
+
+        // その他の ApplicationFailure
+        return new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `${operation} failed: ${errorMessage} (${errorType})`,
+            cause: error,
+        });
+    }
+
     // Temporal特有のエラーを適切なHTTPステータスにマッピング
     if (message.includes('WorkflowExecutionAlreadyStarted')) {
         return new TRPCError({
@@ -94,16 +130,14 @@ export const endUserRouter = router({
     create: publicProcedure
         .input(endUserCreateInputSchema)
         .mutation(async ({ input, ctx }) => {
-            // Use ctx.temporal instead
-
             try {
-                const workflowId = crypto.randomUUID();
-                const handle = await ctx.temporal.workflow.signalWithStart('createEndUserWorkflow', {
+                const email = input.auth0_data?.email || crypto.randomUUID();
+                const workflowId = `enduser-create-${email}`;
+
+                const handle = await ctx.temporal.workflow.start('createEndUserWorkflow', {
                     workflowId,
-                    ...defaultWorkflowOptions,
+                    taskQueue: 'main',
                     args: [input],
-                    signal: 'startCreation',
-                    signalArgs: [],
                     workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
                 });
 
@@ -115,6 +149,13 @@ export const endUserRouter = router({
                 };
 
             } catch (error) {
+                // エラー詳細をログ出力
+                console.error('EndUser creation error details:', {
+                    error,
+                    message: error instanceof Error ? error.message : 'Unknown',
+                    type: error instanceof ApplicationFailure ? error.type : 'Not ApplicationFailure',
+                    cause: error instanceof Error ? error.cause : undefined,
+                });
                 throw mapTemporalError(error, 'EndUser creation');
             }
         }),
@@ -191,35 +232,48 @@ export const endUserRouter = router({
         }),
 
     /**
-     * EndUser取得 - 直接Activity呼び出し
+     * EndUser取得 - Actions層で直接実装
      */
     get: publicProcedure
         .input(endUserLookupInputSchema)
-        .query(async ({ input, ctx }) => {
+        .query(async ({ input }) => {
             try {
-                // TODO: Activityを直接呼び出すためのClientを実装
-                // 現在はWorkflow経由だが、読み取り専用操作なのでActivityの直接呼び出しに変更予定
-                // Use ctx.temporal instead
+                // Auth0 Client と DB を準備
+                const auth0Config = getAuth0ConfigFromEnv();
+                const auth0Client = createAuth0ManagementClient(auth0Config);
+                const db = getDatabase();
 
-                const identifier = input.auth0_user_id || input.platform_user_id || input.email || '';
-                const workflowId = `user-get-${identifier}`;
-
-                const handle = await ctx.temporal.workflow.start('getEndUserWorkflow', {
-                    workflowId,
-                    ...defaultWorkflowOptions,
-                    args: [input],
-                    workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE,
+                // Actions層の getEndUser を呼び出し（email 検索対応）
+                const action = getEndUser({
+                    getAuth0UserActivity: getAuth0User(auth0Client),
+                    findUserById: findUserById(db),
+                    findAuth0UserByEmail: findAuth0UserByEmail(auth0Client),
                 });
 
-                const result = await handle.result();
+                const result = await action(input);
+
+                if (!result) {
+                    throw new TRPCError({
+                        code: 'NOT_FOUND',
+                        message: 'EndUser not found',
+                    });
+                }
+
                 return {
                     success: true,
                     data: result,
-                    workflowId,
                 };
 
             } catch (error) {
-                throw mapTemporalError(error, 'EndUser retrieval');
+                if (error instanceof TRPCError) {
+                    throw error;
+                }
+
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: `EndUser retrieval failed: ${message}`,
+                });
             }
         }),
 });

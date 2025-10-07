@@ -116,6 +116,53 @@ async function run() {
         removeUser: userModel.removeUser(db),
         listUsers: userModel.listUsers(db),
 
+        // Aliases for EndUser Workflow compatibility
+        //あとで消すか修正する
+        createDbUserActivity: async (data: any) => {
+            // Workflow expects: { auth0_user_id: string, ...platform_settings }
+            // User model expects: { id: string }
+            const user = await userModel.insertUser(db)({ id: data.auth0_user_id });
+            // Return with platform_user_id field for Workflow compatibility
+            return {
+                ...user,
+                platform_user_id: user.id,
+                auth0_user_id: user.id,
+            };
+        },
+        getDbUserActivity: async (userId: string) => {
+            const user = await userModel.findUserById(db)(userId);
+            if (!user) return null;
+            return {
+                ...user,
+                platform_user_id: user.id,
+                auth0_user_id: user.id,
+            };
+        },
+        updateDbUserActivity: async (userId: string, updates: any) => {
+            const user = await userModel.updateUser(db)(userId, updates);
+            return {
+                ...user,
+                platform_user_id: user.id,
+                auth0_user_id: user.id,
+            };
+        },
+        markDbUserDeletedActivity: async (userId: string) => {
+            await userModel.removeUser(db)(userId);
+        },
+        findDbUserByEmailActivity: async (email: string) => {
+            // Email is not stored in users table, using id as fallback
+            // In reality, this should query Auth0 or have email in users table
+            return null;
+        },
+        restoreDbUserActivity: async (userId: string, data: any) => {
+            const user = await userModel.updateUser(db)(userId, { isActive: true });
+            return {
+                ...user,
+                platform_user_id: user.id,
+                auth0_user_id: user.id,
+            };
+        },
+
         // ============================================
         // Auth0 Activities
         // ============================================
@@ -126,6 +173,14 @@ async function run() {
         deleteAuth0User: auth0Activities.deleteAuth0User(auth0Client),
         updateAuth0EmailVerification: auth0Activities.updateAuth0EmailVerification(auth0Client),
         blockAuth0User: auth0Activities.blockAuth0User(auth0Client),
+
+        // Aliases for EndUser Workflow compatibility
+        //あとで消すか修正する
+        getAuth0UserActivity: auth0Activities.getAuth0User(auth0Client),
+        createAuth0UserActivity: auth0Activities.createAuth0User(auth0Client, auth0Config.connectionName),
+        updateAuth0UserActivity: auth0Activities.updateAuth0User(auth0Client),
+        deleteAuth0UserActivity: auth0Activities.deleteAuth0User(auth0Client),
+        reactivateAuth0UserActivity: auth0Activities.updateAuth0User(auth0Client),
 
         // ============================================
         // WorkOS Activities

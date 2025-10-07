@@ -1,10 +1,19 @@
+'use client'
+
 import { Header } from "@/components/shared/header"
 import { Footer } from "@/components/shared/footer"
 import { ExperienceGrid } from "@/components/features/experience/experience-grid"
-import { MOCK_EXPERIENCES } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
+import { trpc } from "@/lib/trpc"
+import { LoadingSpinner } from "@/components/shared/loading"
 
 export default function DiscoverPage() {
+  // tRPC でExperience一覧を取得
+  const { data: experiences, isLoading, error } = trpc.experience.list.useQuery({
+    limit: 100,
+    status: 'published',
+  })
+
   return (
     <div className="min-h-screen bg-white">
       <Header />
@@ -39,8 +48,19 @@ export default function DiscoverPage() {
             <Button variant="ghost">アドベンチャー</Button>
           </div>
 
-          {/* Experience Grid */}
-          <ExperienceGrid experiences={MOCK_EXPERIENCES} columns={3} />
+          {/* Experience Grid - API統合 */}
+          {isLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div className="text-center py-20">
+              <p className="text-red-600 mb-4">データの取得に失敗しました</p>
+              <p className="text-sm text-gray-500">{error.message}</p>
+            </div>
+          ) : (
+            <ExperienceGrid experiences={experiences || []} columns={3} />
+          )}
 
           {/* Load More */}
           <div className="mt-16 text-center">

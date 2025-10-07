@@ -8,7 +8,7 @@ import { Providers } from "./providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "i'll be - 展示に来る前も来た後も楽しい",
+  title: "Alllbe - 展示に来る前も来た後も楽しい",
   description: "Location-based entertainment イベント予約プラットフォーム",
   generator: "v0.app",
 }

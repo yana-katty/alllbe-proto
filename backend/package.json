@@ -14,6 +14,7 @@
         "db:generate": "drizzle-kit generate",
         "db:migrate": "tsx src/activities/db/migrate.ts",
         "db:studio": "drizzle-kit studio",
+        "db:seed": "tsx scripts/seed-experiences.ts",
         "docker:up": "docker compose -f e2e/docker-compose.yml up -d",
         "docker:down": "docker compose -f e2e/docker-compose.yml down",
         "docker:logs": "docker compose -f e2e/docker-compose.yml logs -f",

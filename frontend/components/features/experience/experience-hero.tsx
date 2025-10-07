@@ -5,24 +5,28 @@ import Link from "next/link"
 interface ExperienceHeroProps {
   id: string
   title: string
-  subtitle: string
-  category: string
-  image: string
-  location: string
-  duration: string
+  description: string | null
+  coverImageUrl: string | null
+  location: string | null
+  duration: string | null
+  experienceType: string
   featured?: string
 }
 
 export function ExperienceHero({
   id,
   title,
-  subtitle,
-  category,
-  image,
+  description,
+  coverImageUrl,
   location,
   duration,
+  experienceType,
   featured = "FEATURED / 01"
 }: ExperienceHeroProps) {
+  const defaultImage = "/placeholder.svg"
+  const image = coverImageUrl || defaultImage
+  const category = experienceType === 'scheduled' ? '日時指定' : '期間指定'
+
   return (
     <div className="relative h-[70vh] overflow-hidden">
       <div className="absolute inset-0">
@@ -44,13 +48,15 @@ export function ExperienceHero({
               <h1 className="text-7xl md:text-8xl font-black text-white mb-4 leading-[0.85] tracking-tight drop-shadow-2xl">
                 {title}
               </h1>
-              <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl">
-                {subtitle}
-              </p>
+              {description && (
+                <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl line-clamp-3">
+                  {description}
+                </p>
+              )}
               <div className="flex items-center space-x-6 text-white/90 text-sm mb-8 drop-shadow-2xl">
-                <span>{location}</span>
-                <span className="w-1 h-1 bg-white/70 rounded-full"></span>
-                <span>{duration}</span>
+                {location && <span>{location}</span>}
+                {location && duration && <span className="w-1 h-1 bg-white/70 rounded-full"></span>}
+                {duration && <span>{duration}</span>}
               </div>
               <Link href={`/experiences/${id}`}>
                 <Button size="lg" className="bg-white text-black hover:bg-gray-100 font-medium drop-shadow-lg">

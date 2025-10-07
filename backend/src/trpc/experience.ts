@@ -69,6 +69,27 @@ export const experienceRouter = router({
             }
         }),
 
+    list: publicProcedure
+        .input(experienceQuerySchema)
+        .query(async ({ input }) => {
+            try {
+                return await experienceActions.list(input);
+            } catch (error) {
+                if (error instanceof ApplicationFailure) {
+                    throw new TRPCError({
+                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
+                        message: error.message,
+                        cause: error,
+                    });
+                }
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to list experiences',
+                    cause: error,
+                });
+            }
+        }),
+
     listByBrand: publicProcedure
         .input(z.object({
             brandId: z.string().uuid(),

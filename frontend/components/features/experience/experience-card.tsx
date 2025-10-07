@@ -5,24 +5,31 @@ import Image from "next/image"
 interface ExperienceCardProps {
   id: string
   title: string
-  category: string
-  image: string
-  location?: string
-  duration?: string
-  subtitle?: string
+  description: string | null
+  coverImageUrl: string | null
+  location: string | null
+  duration: string | null
+  price: string | null
+  experienceType: string
   featured?: boolean
 }
 
 export function ExperienceCard({
   id,
   title,
-  category,
-  image,
+  description,
+  coverImageUrl,
   location,
   duration,
-  subtitle,
+  price,
+  experienceType,
   featured = false
 }: ExperienceCardProps) {
+  // デフォルト画像とカテゴリマッピング
+  const defaultImage = "/placeholder.svg"
+  const image = coverImageUrl || defaultImage
+  const category = experienceType === 'scheduled' ? '日時指定' : '期間指定'
+
   if (featured) {
     return (
       <Link href={`/experiences/${id}`}>
@@ -45,9 +52,9 @@ export function ExperienceCard({
               <h3 className="text-4xl md:text-5xl font-black mb-4 leading-[0.9] tracking-tight text-white drop-shadow-2xl">
                 {title}
               </h3>
-              {subtitle && (
-                <p className="text-lg text-white mb-6 leading-relaxed max-w-md drop-shadow-lg">
-                  {subtitle}
+              {description && (
+                <p className="text-lg text-white mb-6 leading-relaxed max-w-md drop-shadow-lg line-clamp-2">
+                  {description}
                 </p>
               )}
               <div className="flex items-center space-x-4 text-sm text-white drop-shadow-lg">
@@ -90,7 +97,7 @@ export function ExperienceCard({
           {category}
         </div>
         <h3 className="text-2xl font-bold mb-2 text-black">{title}</h3>
-        {subtitle && <p className="text-gray-600 text-sm mb-3">{subtitle}</p>}
+        {description && <p className="text-gray-600 text-sm mb-3 line-clamp-2">{description}</p>}
         <div className="flex items-center space-x-3 text-xs text-gray-500">
           {location && (
             <span className="flex items-center">
@@ -105,6 +112,12 @@ export function ExperienceCard({
                 <Clock className="w-3 h-3 mr-1" />
                 {duration}
               </span>
+            </>
+          )}
+          {price && (
+            <>
+              {(location || duration) && <span>•</span>}
+              <span className="font-medium text-black">{price}</span>
             </>
           )}
         </div>

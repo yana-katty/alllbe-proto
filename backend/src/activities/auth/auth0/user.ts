@@ -93,20 +93,12 @@ const mapAuth0Error = (error: unknown): ApplicationFailure => {
 };
 
 /**
- * Auth0 User 取得 Activity
+ * Auth0 User 取得 Activity - user_id での取得
  * 
- * 依存注入パターン: ManagementClient を外部から注入
- * 
- * @param client - Auth0 Management Client
- * @returns Activity関数
  * @throws ApplicationFailure (type: AUTH0_USER_NOT_FOUND) - ユーザーが見つからない場合
  * @throws ApplicationFailure (type: AUTH0_API_ERROR) - Auth0 API エラー
  * 
- * @example
- * // Worker 起動時
- * const config = getAuth0ConfigFromEnv();
- * const client = createAuth0ManagementClient(config);
- * 
+ * 使用例:
  * const worker = await Worker.create({
  *   activities: {
  *     getAuth0User: getAuth0User(client),
@@ -120,6 +112,51 @@ export const getAuth0User = (client: ManagementClient) =>
         try {
             const response = await client.users.get(userId);
             const user = response.data || response;
+
+            return auth0UserProfileSchema.parse({
+                user_id: user.user_id,
+                email: user.email,
+                email_verified: user.email_verified ?? false,
+                name: user.name,
+                family_name: user.family_name,
+                given_name: user.given_name,
+                picture: user.picture,
+                locale: user.locale,
+                zoneinfo: user.zoneinfo,
+                last_login: user.last_login,
+                created_at: user.created_at,
+                updated_at: user.updated_at,
+                identities: user.identities,
+                app_metadata: user.app_metadata,
+                user_metadata: user.user_metadata,
+            });
+        } catch (error) {
+            throw mapAuth0Error(error);
+        }
+    };
+
+/**
+ * Auth0 User 検索 Activity - email アドレスでの検索
+ * 
+ * @throws ApplicationFailure (type: AUTH0_API_ERROR) - Auth0 API エラー
+ * @returns ユーザーが見つかった場合は Auth0UserProfile、見つからない場合は null
+ */
+export const findAuth0UserByEmail = (client: ManagementClient) =>
+    async (email: string): Promise<Auth0UserProfile | null> => {
+        try {
+            // Auth0 Management API の listUsersByEmail() で email 検索
+            const users = await client.users.listUsersByEmail({ email });
+
+            if (!users || users.length === 0) {
+                return null;
+            }
+
+            const user = users[0];
+
+            // user が undefined の可能性があるため、明示的にチェック
+            if (!user) {
+                return null;
+            }
 
             return auth0UserProfileSchema.parse({
                 user_id: user.user_id,

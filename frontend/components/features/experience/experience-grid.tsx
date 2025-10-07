@@ -3,11 +3,13 @@ import { ExperienceCard } from "./experience-card"
 interface Experience {
   id: string
   title: string
-  category: string
-  image: string
-  location?: string
-  duration?: string
-  subtitle?: string
+  description: string | null
+  coverImageUrl: string | null
+  location: string | null
+  duration: string | null
+  price: string | null
+  experienceType: string
+  status: string
 }
 
 interface ExperienceGridProps {

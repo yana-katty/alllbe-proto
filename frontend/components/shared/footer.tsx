@@ -4,7 +4,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
           <div className="md:col-span-1">
-            <div className="text-2xl font-bold mb-4">i'll be</div>
+            <div className="text-2xl font-bold mb-4">Alllbe</div>
             <p className="text-white/70 text-sm">
               展示に来る前も来た後も楽しい体験を提供します
             </p>
@@ -81,7 +81,7 @@ export function Footer() {
 
         <div className="border-t border-white/20 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center text-sm text-white/60">
-            <p>© 2025 i'll be. All rights reserved.</p>
+            <p>© 2025 Alllbe. All rights reserved.</p>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <a href="#" className="hover:text-white transition-colors">
                 Twitter

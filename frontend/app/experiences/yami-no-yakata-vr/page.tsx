@@ -10,7 +10,7 @@ export default function YamiNoYakataVRPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="text-2xl font-bold text-black">
-              i'll be
+              Alllbe
             </Link>
             <div className="flex items-center space-x-6">
               <Button variant="ghost" size="sm" className="text-black">

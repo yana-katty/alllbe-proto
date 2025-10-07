@@ -57,7 +57,108 @@ alllbe-proto/
 ### Shared
 - TypeScript (型定義のみ)
 
-## 開発
+## 開発環境のセットアップ
+
+### 必要な環境変数
+
+Backend用の環境変数を設定します:
+
+```bash
+# backend/.env を作成
+cp backend/.env.example backend/.env
+
+# 必要な値を設定:
+# - DATABASE_URL (Neon Database)
+# - TEMPORAL_ADDRESS (Temporal Cloud)
+# - TEMPORAL_NAMESPACE
+# - TEMPORAL_API_KEY
+# - AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET
+# - WORKOS_API_KEY
+```
+
+### Docker Composeでの起動（推奨）
+
+**Backend (tRPC Server + Temporal Worker) を Docker Compose で起動**:
+
+```bash
+# 初回またはDockerfileを変更した場合
+docker compose build
+
+# サービスを起動（デタッチモード）
+docker compose up -d
+
+# ログを確認
+docker compose logs -f
+
+# サービスを停止
+docker compose down
+```
+
+起動されるサービス:
+- **trpc**: tRPC Server (http://localhost:4000)
+- **worker**: Temporal Worker
+
+### ローカル開発（npm run）
+
+Docker Composeを使わずに個別に起動する場合:
+
+```bash
+cd backend
+
+# tRPC Server（別ターミナル）
+npm run dev:server
+
+# Temporal Worker（別ターミナル）
+npm run dev:worker
+```
+
+### データベースマイグレーション
+
+```bash
+cd backend
+
+# マイグレーションファイル生成
+npm run db:generate
+
+# マイグレーション実行
+npm run db:migrate
+
+# Drizzle Studio起動（DB GUI）
+npm run db:studio
+```
+
+### テストデータ投入
+
+```bash
+cd backend
+
+# tRPC APIを使用してテストデータを投入
+npm run db:seed
+```
+
+実行前に以下が起動していることを確認:
+- tRPC Server (docker compose up -d または npm run dev:server)
+- Temporal Worker (docker compose up -d または npm run dev:worker)
+
+### Frontend開発
+
+```bash
+cd frontend
+
+# 環境変数設定
+cp .env.local.example .env.local
+
+# .env.localに以下を設定:
+# NEXT_PUBLIC_TRPC_URL=http://localhost:4000/trpc
+# NEXT_PUBLIC_MOCK_USER_ID=auth0|mock-user-001
+
+# 開発サーバー起動
+npm run dev
+```
+
+Frontendは http://localhost:3000 で起動します。
+
+## 開発（旧）
 
 ### Backend
 

@@ -170,8 +170,21 @@ export async function createEndUserWorkflow(
         // 補償アクション実行
         await compensate(compensations);
 
-        // 元のエラーをre-throw
-        throw err;
+        // ActivityFailureの場合、元のApplicationFailureを抽出して再スロー
+        if (err instanceof ActivityFailure && err.cause instanceof ApplicationFailure) {
+            throw err.cause;
+        }
+
+        // ApplicationFailureの場合はそのまま再スロー
+        if (err instanceof ApplicationFailure) {
+            throw err;
+        }
+
+        // その他のエラーはApplicationFailureでラップ
+        throw ApplicationFailure.nonRetryable(
+            err instanceof Error ? err.message : 'EndUser creation failed',
+            'ENDUSER_CREATION_ERROR'
+        );
     }
 }
 
@@ -243,8 +256,21 @@ export async function updateEndUserWorkflow(
         // 補償アクション実行
         await compensate(compensations);
 
-        // 元のエラーをre-throw
-        throw err;
+        // ActivityFailureの場合、元のApplicationFailureを抽出して再スロー
+        if (err instanceof ActivityFailure && err.cause instanceof ApplicationFailure) {
+            throw err.cause;
+        }
+
+        // ApplicationFailureの場合はそのまま再スロー
+        if (err instanceof ApplicationFailure) {
+            throw err;
+        }
+
+        // その他のエラーはApplicationFailureでラップ
+        throw ApplicationFailure.nonRetryable(
+            err instanceof Error ? err.message : 'EndUser update failed',
+            'ENDUSER_UPDATE_ERROR'
+        );
     }
 }
 
@@ -276,8 +302,20 @@ export async function deleteEndUserWorkflow(
             auth0_user_id: input.auth0_user_id
         });
 
-        // 削除処理では補償は困難なため、エラーログを出力してre-throw
-        throw err;
+        // ActivityFailureの場合、元のApplicationFailureを抽出して再スロー
+        if (err instanceof ActivityFailure && err.cause instanceof ApplicationFailure) {
+            throw err.cause;
+        }
+
+        // ApplicationFailureの場合はそのまま再スロー
+        if (err instanceof ApplicationFailure) {
+            throw err;
+        }
+
+        // その他のエラーはApplicationFailureでラップ
+        throw ApplicationFailure.nonRetryable(
+            err instanceof Error ? err.message : 'EndUser deletion failed',
+            'ENDUSER_DELETION_ERROR'
+        );
     }
 }
-

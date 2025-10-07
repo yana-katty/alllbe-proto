@@ -10,7 +10,7 @@ export default function LoginPage() {
       <header className="border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <Link href="/" className="text-2xl font-bold text-black">
-            i'll be
+            Alllbe
           </Link>
           <Link href="/auth/signup" className="text-sm text-gray-600 hover:text-black">
             アカウント作成

@@ -100,3 +100,22 @@ export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrgani
 
         return organizations;
     };
+
+/**
+ * Organization を WorkOS 名前で検索
+ * listOrganizations を使用して全件取得後、名前でフィルタリング
+ * 
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
+ */
+export const findOrganizationByWorkosName = (deps: Pick<OrganizationActionDeps, 'listOrganizationsActivity' | 'getWorkosOrganizationActivity'>) =>
+    async (name: string): Promise<OrganizationWithWorkos | null> => {
+        // 全 Organization を取得（WorkOS データ付き）
+        const allOrganizations = await listOrganizations(deps)({ limit: 100, offset: 0 });
+
+        // 名前で検索（大文字小文字を区別しない）
+        const found = allOrganizations.find(org =>
+            org.workosData?.name?.toLowerCase() === name.toLowerCase()
+        );
+
+        return found || null;
+    };

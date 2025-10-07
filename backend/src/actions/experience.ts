@@ -129,6 +129,7 @@ export function createExperienceActions(deps: ExperienceActionDeps) {
     return {
         createExperience: createExperience(deps),
         getExperienceById: getExperienceById(deps),
+        list: listExperiences(deps),
         listExperiences: listExperiences(deps),
         listExperiencesByBrand: listExperiencesByBrand(deps),
         updateExperience: updateExperience(deps),

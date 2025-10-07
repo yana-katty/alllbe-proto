@@ -73,8 +73,15 @@ export const experienceCreateSchema = z.object({
     title: z.string().min(1).max(255),
     description: z.string().optional(),
     location: z.string().optional(),
+    duration: z.string().optional(),
     capacity: z.string().optional(),
+    minParticipants: z.string().optional(),
+    maxParticipants: z.string().optional(),
     price: z.string().optional(),
+    paymentMethods: z.string().optional(), // JSON文字列
+    ageRestriction: z.string().optional(),
+    notes: z.string().optional(), // JSON文字列（箇条書き）
+    highlights: z.string().optional(), // JSON文字列（箇条書き）
     experienceType: z.enum(['scheduled', 'period', 'flexible']),
     scheduledStartAt: z.date().optional(),
     scheduledEndAt: z.date().optional(),
@@ -82,6 +89,7 @@ export const experienceCreateSchema = z.object({
     periodEndDate: z.date().optional(),
     status: z.enum(['draft', 'published', 'ended', 'archived']).default('draft'),
     coverImageUrl: z.string().url().optional(),
+    heroImageUrl: z.string().url().optional(),
     tags: z.string().optional(),
 });
 
@@ -142,8 +150,15 @@ export const insertExperience = (db: Database): InsertExperience =>
                 title: validatedData.title,
                 description: validatedData.description,
                 location: validatedData.location,
+                duration: validatedData.duration,
                 capacity: validatedData.capacity,
+                minParticipants: validatedData.minParticipants,
+                maxParticipants: validatedData.maxParticipants,
                 price: validatedData.price,
+                paymentMethods: validatedData.paymentMethods,
+                ageRestriction: validatedData.ageRestriction,
+                notes: validatedData.notes,
+                highlights: validatedData.highlights,
                 experienceType: validatedData.experienceType,
                 scheduledStartAt: validatedData.scheduledStartAt,
                 scheduledEndAt: validatedData.scheduledEndAt,
@@ -151,6 +166,7 @@ export const insertExperience = (db: Database): InsertExperience =>
                 periodEndDate: validatedData.periodEndDate,
                 status: validatedData.status ?? 'draft',
                 coverImageUrl: validatedData.coverImageUrl,
+                heroImageUrl: validatedData.heroImageUrl,
                 tags: validatedData.tags,
             }).returning();
 

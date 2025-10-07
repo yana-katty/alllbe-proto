@@ -15,6 +15,16 @@ import {
     deleteOrganizationWithWorkosWorkflow,
 } from '../workflows/organization';
 import { organizationCreateSchema, organizationUpdateSchema, organizationQuerySchema } from '../activities/db/models/organization';
+import { findOrganizationByWorkosName } from '../actions/organization';
+import { listOrganizations as listOrganizationsActivity } from '../activities/db/models/organization';
+import { getWorkosOrganization } from '../activities/auth/workos/organization';
+import { getDatabase } from '../activities/db/connection';
+import { getWorkosConfigFromEnv, createWorkosClient } from '../activities/auth/workos/workosClient';
+
+// DB と WorkOS Client の取得
+const db = getDatabase();
+const workosConfig = getWorkosConfigFromEnv();
+const workosClient = createWorkosClient(workosConfig);
 
 export const organizationRouter = router({
     // ============================================
@@ -58,6 +68,36 @@ export const organizationRouter = router({
                 code: 'NOT_IMPLEMENTED',
                 message: 'WorkOS integration pending',
             });
+        }),
+
+    /**
+     * WorkOS 名前で Organization を検索 (WorkOSデータ統合)
+     */
+    findByWorkosName: publicProcedure
+        .input(z.string())
+        .query(async ({ input }) => {
+            try {
+                const action = findOrganizationByWorkosName({
+                    listOrganizationsActivity: listOrganizationsActivity(db),
+                    getWorkosOrganizationActivity: getWorkosOrganization(workosClient),
+                });
+                const org = await action(input);
+                return org; // null または OrganizationWithWorkos
+            } catch (error) {
+                if (error instanceof ApplicationFailure) {
+                    throw new TRPCError({
+                        code: mapTemporalErrorToTRPC(error.type ?? undefined),
+                        message: error.message,
+                        cause: error,
+                    });
+                }
+
+                throw new TRPCError({
+                    code: 'INTERNAL_SERVER_ERROR',
+                    message: error instanceof Error ? error.message : 'Failed to find organization by WorkOS name',
+                    cause: error,
+                });
+            }
         }),
 
     /**
