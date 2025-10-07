@@ -25,6 +25,8 @@ const requiredEnvVars = [
     'AUTH0_DOMAIN',
     'AUTH0_MANAGEMENT_CLIENT_ID',
     'AUTH0_MANAGEMENT_CLIENT_SECRET',
+    'WORKOS_API_KEY',
+    'WORKOS_CLIENT_ID',
 ];
 
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);

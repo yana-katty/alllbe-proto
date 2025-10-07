@@ -139,7 +139,7 @@ export const getWorkosOrganization = (client: WorkOS) =>
                 domains: org.domains || [],
                 created_at: org.createdAt,
                 updated_at: org.updatedAt,
-                metadata: org.metadata,
+                metadata: org.metadata || undefined,
             });
         } catch (error) {
             throw mapWorkosError(error);
@@ -192,7 +192,7 @@ export const createWorkosOrganization = (client: WorkOS) =>
                 domains: org.domains || [],
                 created_at: org.createdAt,
                 updated_at: org.updatedAt,
-                metadata: {},
+                metadata: org.metadata || undefined,
             });
         } catch (error) {
             throw mapWorkosError(error);
@@ -224,7 +224,7 @@ export const updateWorkosOrganization = (client: WorkOS) =>
                 domains: updatedOrg.domains || [],
                 created_at: updatedOrg.createdAt,
                 updated_at: updatedOrg.updatedAt,
-                metadata: (currentOrg as any).metadata || {},
+                metadata: (currentOrg as any).metadata || undefined,
             });
         } catch (error) {
             throw mapWorkosError(error);

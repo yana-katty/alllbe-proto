@@ -64,7 +64,7 @@ export const workosOrganizationSchema = z.object({
         contact: z.object({
             email: z.string().email(),
             phone: z.string().optional(),
-        }),
+        }).optional(),
 
         /** 請求先情報 */
         billing: z.object({
