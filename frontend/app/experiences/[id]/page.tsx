@@ -8,10 +8,15 @@ import Link from "next/link"
 import { trpc } from "@/lib/trpc"
 import { LoadingSpinner } from "@/components/shared/loading"
 import { notFound } from "next/navigation"
+import { ExperienceContent } from "@/components/features/experience/experience-content"
+import { useExperienceAccessLevel } from "@/hooks/use-experience-access-level"
 
 export default function ExperienceDetailPage({ params }: { params: { id: string } }) {
   // tRPC で Experience 詳細を取得
   const { data: experience, isLoading, error } = trpc.experience.getById.useQuery(params.id)
+
+  // ユーザーのアクセスレベルを取得
+  const { accessLevel } = useExperienceAccessLevel(params.id)
 
   if (isLoading) {
     return (
@@ -187,6 +192,12 @@ export default function ExperienceDetailPage({ params }: { params: { id: string 
           </div>
         </div>
       </section>
+
+      {/* Related Content Section */}
+      <ExperienceContent
+        experienceId={experience.id}
+        userAccessLevel={accessLevel}
+      />
 
       <Footer />
     </div>

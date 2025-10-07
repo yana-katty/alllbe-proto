@@ -13,8 +13,8 @@ import { httpBatchLink } from '@trpc/client';
 import { trpc } from '@/lib/trpc';
 import { useState, useEffect, type ReactNode } from 'react';
 
-// Phase 1: Mock サーバーを有効化（開発環境のみ）
-const USE_MOCK_SERVER = process.env.NEXT_PUBLIC_USE_MOCK_SERVER === 'true' || process.env.NODE_ENV === 'development';
+// Phase 1: Mock サーバーを有効化（開発環境 かつ 環境変数で明示的に有効化）
+const USE_MOCK_SERVER = process.env.NEXT_PUBLIC_USE_MOCK_SERVER === 'true';
 
 export function Providers({ children }: { children: ReactNode }) {
     const [isMockServerReady, setIsMockServerReady] = useState(!USE_MOCK_SERVER);
@@ -52,8 +52,8 @@ export function Providers({ children }: { children: ReactNode }) {
             links: [
                 httpBatchLink({
                     // Phase 1: Mock サーバー使用時は相対パスでリクエスト（MSW が同一オリジンのみ対応）
-                    url: USE_MOCK_SERVER 
-                        ? '/trpc' 
+                    url: USE_MOCK_SERVER
+                        ? '/trpc'
                         : (process.env.NEXT_PUBLIC_TRPC_URL || 'http://localhost:4000/trpc'),
                     headers() {
                         // TODO: Auth0 トークンを追加（Phase 3）
@@ -69,10 +69,10 @@ export function Providers({ children }: { children: ReactNode }) {
     // Mock サーバーの準備ができるまで待機（開発環境のみ）
     if (!isMockServerReady) {
         return (
-            <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 height: '100vh',
                 fontFamily: 'system-ui, sans-serif'
             }}>

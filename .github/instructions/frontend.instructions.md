@@ -6,6 +6,9 @@ applyTo: "frontend/**"
 
 ## 開発環境のセットアップ
 
+Playwright MCPツールを使用してブラウザを実際に操作して開発してください
+
+
 ### Backend の起動（Docker Compose - 推奨）
 
 Frontend開発を始める前に、BackendのtRPC ServerとTemporal Workerを起動します。

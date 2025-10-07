@@ -1,16 +1,62 @@
+'use client'
+
 import { Header } from "@/components/shared/header"
 import { Footer } from "@/components/shared/footer"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Clock, MapPin, Users, Calendar } from "lucide-react"
+import { ArrowRight, Clock, MapPin, Users, CreditCard } from "lucide-react"
 import Link from "next/link"
-import { getExperienceById } from "@/lib/constants"
+import { trpc } from "@/lib/trpc"
+import { LoadingSpinner } from "@/components/shared/loading"
 import { notFound } from "next/navigation"
 
 export default function BookExperiencePage({ params }: { params: { experienceId: string } }) {
-  const experience = getExperienceById(params.experienceId)
+  // tRPC で Experience 詳細を取得
+  const { data: experience, isLoading, error } = trpc.experience.getById.useQuery(params.experienceId)
 
-  if (!experience) {
-    notFound()
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <div className="flex justify-center items-center py-40">
+          <LoadingSpinner />
+        </div>
+        <Footer />
+      </div>
+    )
+  }
+
+  if (error || !experience) {
+    return notFound()
+  }
+
+  const defaultImage = "/placeholder.svg"
+  const heroImage = experience.heroImageUrl || experience.coverImageUrl || defaultImage
+  const experienceTypeLabel = experience.experienceType === 'scheduled' ? '日時指定' : '期間指定'
+
+  // highlights を JSON からパース
+  let highlights: string[] = []
+  if (experience.highlights && typeof experience.highlights === 'string') {
+    try {
+      highlights = JSON.parse(experience.highlights)
+    } catch {
+      highlights = []
+    }
+  }
+
+  // paymentMethods を JSON からパース
+  let paymentMethods: string[] = ['onsite']
+  if (experience.paymentMethods && typeof experience.paymentMethods === 'string') {
+    try {
+      paymentMethods = JSON.parse(experience.paymentMethods)
+    } catch {
+      paymentMethods = ['onsite']
+    }
+  }
+
+  const paymentMethodLabels: Record<string, string> = {
+    onsite: '現地決済',
+    online: 'オンライン決済',
+    both: '現地・オンライン決済'
   }
 
   return (
@@ -22,7 +68,7 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
         <div className="relative h-[60vh] overflow-hidden">
           <div className="absolute inset-0">
             <img
-              src={experience.image}
+              src={heroImage}
               alt={experience.title}
               className="w-full h-full object-cover"
             />
@@ -33,14 +79,16 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
             <div className="max-w-7xl mx-auto px-6 w-full pb-16">
               <div className="max-w-2xl">
                 <div className="text-xs tracking-[0.3em] text-white/90 mb-4 font-mono drop-shadow-2xl">
-                  {experience.category}
+                  {experienceTypeLabel}
                 </div>
                 <h1 className="text-6xl md:text-7xl font-black text-white mb-4 leading-[0.85] tracking-tight drop-shadow-2xl">
                   {experience.title}
                 </h1>
-                <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl">
-                  {experience.subtitle}
-                </p>
+                {experience.description && (
+                  <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl">
+                    {experience.description}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -56,9 +104,11 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
               <div className="mb-12">
                 <div className="text-xs tracking-[0.3em] text-gray-400 mb-4 font-mono">EXPERIENCE DETAILS</div>
                 <h2 className="text-3xl font-bold text-black mb-6">体験について</h2>
-                <p className="text-gray-600 leading-relaxed mb-8 text-lg">
-                  {experience.description || experience.subtitle}
-                </p>
+                {experience.description && (
+                  <p className="text-gray-600 leading-relaxed mb-8 text-lg whitespace-pre-line">
+                    {experience.description}
+                  </p>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
                   <div className="flex items-start space-x-4">
@@ -95,20 +145,22 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
 
                   <div className="flex items-start space-x-4">
                     <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center">
-                      <Calendar className="w-6 h-6 text-white" />
+                      <CreditCard className="w-6 h-6 text-white" />
                     </div>
                     <div>
                       <h3 className="font-bold text-black mb-1">支払い方法</h3>
-                      <p className="text-gray-600">現地決済のみ</p>
+                      <p className="text-gray-600">
+                        {paymentMethods.map(m => paymentMethodLabels[m] || m).join('・')}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {experience.highlights && experience.highlights.length > 0 && (
+                {highlights.length > 0 && (
                   <div className="bg-gray-50 p-8 rounded-lg">
                     <h3 className="text-xl font-bold text-black mb-4">体験のハイライト</h3>
                     <ul className="space-y-3">
-                      {experience.highlights.map((highlight, index) => (
+                      {highlights.map((highlight, index) => (
                         <li key={index} className="flex items-center space-x-3">
                           <div className="w-2 h-2 bg-black rounded-full"></div>
                           <span className="text-gray-700">{highlight}</span>
@@ -128,22 +180,28 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
                   <h3 className="text-2xl font-bold mb-6">予約を開始</h3>
 
                   <div className="space-y-4 mb-8">
-                    <div className="flex justify-between items-center py-3 border-b border-white/20">
-                      <span className="text-white/80">体験時間</span>
-                      <span className="font-medium">{experience.duration}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-3 border-b border-white/20">
-                      <span className="text-white/80">場所</span>
-                      <span className="font-medium">{experience.location}</span>
-                    </div>
+                    {experience.duration && (
+                      <div className="flex justify-between items-center py-3 border-b border-white/20">
+                        <span className="text-white/80">体験時間</span>
+                        <span className="font-medium">{experience.duration}</span>
+                      </div>
+                    )}
+                    {experience.location && (
+                      <div className="flex justify-between items-center py-3 border-b border-white/20">
+                        <span className="text-white/80">場所</span>
+                        <span className="font-medium">{experience.location}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center py-3 border-b border-white/20">
                       <span className="text-white/80">支払い</span>
-                      <span className="font-medium">現地決済</span>
+                      <span className="font-medium">
+                        {paymentMethods.map(m => paymentMethodLabels[m] || m).join('・')}
+                      </span>
                     </div>
                     {experience.price && (
                       <div className="flex justify-between items-center py-3">
                         <span className="text-white/80">料金</span>
-                        <span className="text-2xl font-bold">¥{experience.price.toLocaleString()}</span>
+                        <span className="text-2xl font-bold">{experience.price}</span>
                       </div>
                     )}
                   </div>
@@ -159,15 +217,21 @@ export default function BookExperiencePage({ params }: { params: { experienceId:
                 </div>
 
                 {/* Additional Info */}
-                <div className="mt-8 p-6 bg-gray-50 rounded-lg">
-                  <h4 className="font-bold text-black mb-3">ご注意事項</h4>
-                  <ul className="text-sm text-gray-600 space-y-2">
-                    <li>• 13歳未満の方は保護者同伴が必要です</li>
-                    <li>• 心臓疾患をお持ちの方はご遠慮ください</li>
-                    <li>• 開始時刻の10分前までにお越しください</li>
-                    <li>• キャンセルは前日まで可能です</li>
-                  </ul>
+                <div className="mt-6 p-6 bg-gray-50 rounded-lg">
+                  <h4 className="font-bold text-black mb-3">キャンセルポリシー</h4>
+                  <p className="text-sm text-gray-600">
+                    体験開始の48時間前まで無料でキャンセル可能です。
+                  </p>
                 </div>
+
+                {experience.ageRestriction && (
+                  <div className="mt-4 p-6 bg-gray-50 rounded-lg">
+                    <h4 className="font-bold text-black mb-3">年齢制限</h4>
+                    <p className="text-sm text-gray-600">
+                      {experience.ageRestriction}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

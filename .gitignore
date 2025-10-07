@@ -21,3 +21,5 @@ Thumbs.db
 
 # Temporal
 .temporal/
+
+.playwright-mcp
