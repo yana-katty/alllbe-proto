@@ -1,0 +1,370 @@
+import { Button } from "@/components/ui/button"
+import { ArrowRight } from "lucide-react"
+import Link from "next/link"
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Navigation */}
+      <nav className="border-b border-gray-200 bg-white sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex justify-between items-center h-16">
+            <div className="text-2xl font-bold text-black">i'll be</div>
+            <div className="flex items-center space-x-6">
+              <Button variant="ghost" size="sm" className="text-black">
+                LOGIN
+              </Button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <section className="relative">
+        {/* Main Featured Content */}
+        <div className="relative h-[70vh] overflow-hidden">
+          <div className="absolute inset-0">
+            <img
+              src="/dark-haunted-mansion-vr-horror-experience-with-eer.jpg"
+              alt="闇の館VR体験"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/70" />
+          </div>
+
+          <div className="relative h-full flex items-center">
+            <div className="max-w-7xl mx-auto px-6 w-full">
+              <div className="max-w-xl">
+                <div className="p-8 bg-black/60 backdrop-blur-sm rounded-lg">
+                  <div className="text-xs tracking-[0.3em] text-white/90 mb-4 font-mono drop-shadow-2xl">
+                    FEATURED / 01
+                  </div>
+                  <h1 className="text-7xl md:text-8xl font-black text-white mb-4 leading-[0.85] tracking-tight drop-shadow-2xl">
+                    闇の館
+                    <br />
+                    VR
+                  </h1>
+                  <p className="text-lg text-white mb-6 leading-relaxed font-light drop-shadow-2xl">
+                    呪われた洋館で繰り広げられる恐怖体験。
+                  </p>
+                  <div className="flex items-center space-x-6 text-white/90 text-sm mb-8 drop-shadow-2xl">
+                    <span>渋谷VRパーク</span>
+                    <span className="w-1 h-1 bg-white/70 rounded-full"></span>
+                    <span>45分</span>
+                  </div>
+                  <Link href="/experiences/yami-no-yakata-vr">
+                    <Button size="lg" className="bg-white text-black hover:bg-gray-100 font-medium drop-shadow-lg">
+                      予約する
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Secondary Featured Grid */}
+        <div className="bg-black text-white py-16">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {/* Featured 02 */}
+              <div className="group cursor-pointer">
+                <div className="aspect-[4/5] overflow-hidden mb-4">
+                  <img
+                    src="/giant-warriors-battle-immersive-theater-experience.jpg"
+                    alt="巨神戦記"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 02</div>
+                <h3 className="text-2xl font-bold mb-2">巨神戦記</h3>
+                <p className="text-white/70 text-sm mb-3">イマーシブシアター</p>
+                <p className="text-white/60 text-xs">お台場 • 90分</p>
+              </div>
+
+              {/* Featured 03 */}
+              <div className="group cursor-pointer">
+                <div className="aspect-[4/5] overflow-hidden mb-4">
+                  <img
+                    src="/magical-fantasy-maze-with-glowing-portals-and-myst.jpg"
+                    alt="魔法の迷宮"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 03</div>
+                <h3 className="text-2xl font-bold mb-2">魔法の迷宮</h3>
+                <p className="text-white/70 text-sm mb-3">没入型演劇</p>
+                <p className="text-white/60 text-xs">銀座 • 120分</p>
+              </div>
+
+              {/* Featured 04 */}
+              <div className="group cursor-pointer md:col-span-2 lg:col-span-1">
+                <div className="aspect-[4/5] overflow-hidden mb-4">
+                  <img
+                    src="/futuristic-neon-cyberpunk-city-vr-experience-with-.jpg"
+                    alt="ネオン・シティ"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+                <div className="text-xs tracking-[0.3em] text-white/60 mb-2 font-mono">FEATURED / 04</div>
+                <h3 className="text-2xl font-bold mb-2">ネオン・シティ</h3>
+                <p className="text-white/70 text-sm mb-3">VR体験</p>
+                <p className="text-white/60 text-xs">秋葉原 • 60分</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
+          {/* Horror & Mystery Section */}
+          <div className="mb-32">
+            <div className="flex items-end justify-between mb-16">
+              <div>
+                <div className="text-xs tracking-[0.3em] text-gray-400 mb-2 font-mono">CATEGORY / 01</div>
+                <h2 className="text-6xl font-black text-black leading-none">
+                  HORROR &<br />
+                  MYSTERY
+                </h2>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-600 mb-2">恐怖と謎解きの世界へ</p>
+                <Link href="/category/horror" className="text-sm underline text-black hover:no-underline">
+                  すべて見る →
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16">
+              {/* Large featured item with overlay */}
+              <div className="lg:col-span-8">
+                <div className="relative aspect-[16/10] overflow-hidden group cursor-pointer">
+                  <img
+                    src="/abandoned-school-at-night-horror-atmosphere-with-d.jpg"
+                    alt="廃校の謎"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-black/40" />
+
+                  {/* Text overlay with background */}
+                  <div className="absolute inset-0 flex flex-col justify-between p-8">
+                    <div>
+                      <div className="inline-block bg-red-600/90 px-3 py-1 rounded text-xs tracking-[0.4em] text-white mb-4 font-mono drop-shadow-lg">
+                        HORROR / 01
+                      </div>
+                    </div>
+
+                    <div className="p-6 bg-black/60 backdrop-blur-sm rounded-lg">
+                      <h3 className="text-5xl md:text-6xl font-black mb-4 leading-[0.9] tracking-tight text-white drop-shadow-2xl">
+                        廃校の
+                        <br />謎
+                      </h3>
+                      <p className="text-lg text-white mb-6 leading-relaxed max-w-md drop-shadow-lg">
+                        閉鎖された学校に隠された秘密。
+                        <br />
+                        真実を解き明かせるか？
+                      </p>
+                      <div className="flex items-center space-x-4 text-sm text-white drop-shadow-lg">
+                        <span>新宿ミステリーハウス</span>
+                        <span>•</span>
+                        <span>60分</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Side content with overlays */}
+              <div className="lg:col-span-4 space-y-8">
+                <div className="relative group cursor-pointer">
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src="/mysterious-museum-at-night-with-ancient-artifacts-.jpg"
+                      alt="深夜の美術館"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent" />
+
+                    <div className="absolute bottom-0 left-0 right-0 p-6">
+                      <div className="p-4 bg-black/60 backdrop-blur-sm rounded-lg">
+                        <div className="inline-block bg-blue-600/90 px-2 py-1 rounded text-xs tracking-[0.3em] text-white mb-2 font-mono drop-shadow-lg">
+                          MYSTERY / 02
+                        </div>
+                        <h4 className="text-2xl font-bold mb-2 text-white drop-shadow-xl">深夜の美術館</h4>
+                        <p className="text-white mb-2 text-sm drop-shadow-xl">特別ナイトツアー</p>
+                        <p className="text-white text-xs drop-shadow-xl">上野国立美術館 • 90分</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative group cursor-pointer">
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img
+                      src="/placeholder-5mvav.png"
+                      alt="宇宙ステーション"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent" />
+
+                    <div className="absolute bottom-0 left-0 right-0 p-6">
+                      <div className="p-4 bg-black/60 backdrop-blur-sm rounded-lg">
+                        <div className="inline-block bg-purple-600/90 px-2 py-1 rounded text-xs tracking-[0.3em] text-white mb-2 font-mono drop-shadow-lg">
+                          SCI-FI / 03
+                        </div>
+                        <h4 className="text-2xl font-bold mb-2 text-white drop-shadow-xl">宇宙ステーション</h4>
+                        <p className="text-white mb-2 text-sm drop-shadow-xl">VR探索体験</p>
+                        <p className="text-white text-xs drop-shadow-xl">品川VRパーク • 45分</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* VR & Digital Section */}
+          <div className="mb-32">
+            <div className="flex items-end justify-between mb-16">
+              <div>
+                <div className="text-xs tracking-[0.3em] text-gray-400 mb-2 font-mono">CATEGORY / 02</div>
+                <h2 className="text-6xl font-black text-black leading-none">
+                  VR &<br />
+                  DIGITAL
+                </h2>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-600 mb-2">仮想現実の最前線</p>
+                <Link href="/category/vr" className="text-sm underline text-black hover:no-underline">
+                  すべて見る →
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                {
+                  title: "古代遺跡探検",
+                  subtitle: "VRアドベンチャー",
+                  location: "池袋VRワールド",
+                  category: "ADVENTURE / 01",
+                  color: "text-orange-400",
+                  image: "/placeholder-fdw2y.png",
+                },
+                {
+                  title: "未来都市",
+                  subtitle: "VR体験",
+                  location: "渋谷VRパーク",
+                  category: "FUTURE / 02",
+                  color: "text-cyan-400",
+                  image: "/placeholder-won6k.png",
+                },
+                {
+                  title: "深海探索",
+                  subtitle: "VRダイビング",
+                  location: "お台場VRゾーン",
+                  category: "OCEAN / 03",
+                  color: "text-blue-400",
+                  image: "/placeholder-nnev5.png",
+                },
+                {
+                  title: "宇宙飛行",
+                  subtitle: "VRシミュレーター",
+                  location: "新宿VRセンター",
+                  category: "SPACE / 04",
+                  color: "text-purple-400",
+                  image: "/placeholder-hc0o9.png",
+                },
+              ].map((item, index) => (
+                <div key={index} className="relative group cursor-pointer">
+                  <div className="aspect-[3/4] overflow-hidden">
+                    <img
+                      src={item.image || "/placeholder.svg"}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/98 via-black/70 to-black/30" />
+                  </div>
+
+                  <div className="absolute inset-0 flex flex-col justify-between p-6">
+                    <div>
+                      <div
+                        className={`inline-block ${item.color === "text-orange-400" ? "bg-orange-600/90" : item.color === "text-cyan-400" ? "bg-cyan-600/90" : item.color === "text-blue-400" ? "bg-blue-600/90" : "bg-purple-600/90"} px-2 py-1 rounded text-xs tracking-[0.3em] text-white mb-2 font-mono drop-shadow-lg`}
+                      >
+                        {item.category}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-black/90 backdrop-blur-sm rounded-lg">
+                      <h4 className="text-xl font-bold mb-2 text-white drop-shadow-2xl">{item.title}</h4>
+                      <p className="text-white mb-2 text-sm drop-shadow-2xl">{item.subtitle}</p>
+                      <p className="text-white text-xs drop-shadow-2xl">{item.location}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Immersive Theater Section */}
+          <div>
+            <div className="flex items-end justify-between mb-16">
+              <div>
+                <div className="text-xs tracking-[0.3em] text-gray-400 mb-2 font-mono">CATEGORY / 03</div>
+                <h2 className="text-6xl font-black text-black leading-none">
+                  IMMERSIVE
+                  <br />
+                  THEATER
+                </h2>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-600 mb-2">没入型エンターテイメント</p>
+                <Link href="/category/theater" className="text-sm underline text-black hover:no-underline">
+                  すべて見る →
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+              <div className="order-2 lg:order-1">
+                <div className="text-xs tracking-[0.3em] text-yellow-600 mb-4 font-mono">THEATER / 01</div>
+                <h3 className="text-4xl font-bold text-black mb-6">
+                  闇夜の
+                  <br />
+                  シアター
+                </h3>
+                <p className="text-gray-600 leading-relaxed mb-8">
+                  完全な暗闇の中で繰り広げられる革新的な演劇体験。 視覚以外の感覚を研ぎ澄まし、新たな物語の世界へ。
+                </p>
+                <div className="flex items-center space-x-4 text-sm text-gray-500 mb-8">
+                  <span>恵比寿ガーデンプレイス</span>
+                  <span>•</span>
+                  <span>150分</span>
+                </div>
+                <Button className="bg-black text-white hover:bg-gray-800">
+                  体験を予約する
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+              <div className="order-1 lg:order-2 relative">
+                <div className="aspect-[4/5] overflow-hidden group cursor-pointer">
+                  <img
+                    src="/dark-immersive-theater-experience-with-dramatic-st.jpg"
+                    alt="闇夜のシアター"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                  <div className="absolute top-8 left-8">
+                    <div className="text-xs tracking-[0.3em] text-yellow-700 font-mono">PREMIUM EXPERIENCE</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
