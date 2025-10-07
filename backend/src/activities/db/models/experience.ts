@@ -69,7 +69,7 @@ export const createExperienceError = (info: ExperienceErrorInfo): ApplicationFai
 // ============================================
 
 export const experienceCreateSchema = z.object({
-    organizationId: z.string().uuid(),
+    brandId: z.string().uuid(),
     title: z.string().min(1).max(255),
     description: z.string().optional(),
     location: z.string().optional(),
@@ -86,7 +86,7 @@ export const experienceCreateSchema = z.object({
 });
 
 export const experienceUpdateSchema = experienceCreateSchema.partial().omit({
-    organizationId: true,
+    brandId: true,
 });
 
 export const experienceIdSchema = z.object({
@@ -94,7 +94,7 @@ export const experienceIdSchema = z.object({
 });
 
 export const experienceQuerySchema = z.object({
-    organizationId: z.string().uuid().optional(),
+    brandId: z.string().uuid().optional(),
     status: z.enum(['draft', 'published', 'ended', 'archived']).optional(),
     experienceType: z.enum(['scheduled', 'period', 'flexible']).optional(),
     search: z.string().optional(),
@@ -117,7 +117,7 @@ export type ExperienceQueryInput = z.infer<typeof experienceQuerySchema>;
 export type InsertExperience = (data: ExperienceCreateInput) => Promise<Experience>;
 export type FindExperienceById = (id: string) => Promise<Experience | null>;
 export type ListExperiences = (params: ExperienceQueryInput) => Promise<Experience[]>;
-export type ListExperiencesByOrganization = (organizationId: string, params?: Partial<ExperienceQueryInput>) => Promise<Experience[]>;
+export type ListExperiencesByBrand = (brandId: string, params?: Partial<ExperienceQueryInput>) => Promise<Experience[]>;
 export type UpdateExperience = (id: string, patch: ExperienceUpdateInput) => Promise<Experience>;
 export type RemoveExperience = (id: string) => Promise<boolean>;
 
@@ -134,7 +134,7 @@ export const insertExperience = (db: Database): InsertExperience =>
     async (data: ExperienceCreateInput): Promise<Experience> => {
         try {
             const result = await db.insert(experiences).values({
-                organizationId: data.organizationId,
+                brandId: data.brandId,
                 title: data.title,
                 description: data.description,
                 location: data.location,
@@ -208,10 +208,10 @@ export const findExperienceById = (db: Database): FindExperienceById =>
 export const listExperiences = (db: Database): ListExperiences =>
     async (params: ExperienceQueryInput): Promise<Experience[]> => {
         try {
-            const { organizationId, status, experienceType, search, startDateFrom, startDateTo, isActive, limit, offset } = params;
+            const { brandId, status, experienceType, search, startDateFrom, startDateTo, isActive, limit, offset } = params;
             const conditions: any[] = [];
 
-            if (organizationId) conditions.push(eq(experiences.organizationId, organizationId));
+            if (brandId) conditions.push(eq(experiences.brandId, brandId));
             if (status) conditions.push(eq(experiences.status, status));
             if (experienceType) conditions.push(eq(experiences.experienceType, experienceType));
             if (search) conditions.push(ilike(experiences.title, `%${search}%`));
@@ -240,14 +240,14 @@ export const listExperiences = (db: Database): ListExperiences =>
     };
 
 /**
- * Organization 配下の Experience リストを取得
+ * Brand 配下の Experience リストを取得
  * 
  * @throws ApplicationFailure (type: EXPERIENCE_DATABASE_ERROR) - DB操作エラー
  */
-export const listExperiencesByOrganization = (db: Database): ListExperiencesByOrganization =>
-    async (organizationId: string, params?: Partial<ExperienceQueryInput>): Promise<Experience[]> => {
+export const listExperiencesByBrand = (db: Database): ListExperiencesByBrand =>
+    async (brandId: string, params?: Partial<ExperienceQueryInput>): Promise<Experience[]> => {
         const fullParams: ExperienceQueryInput = {
-            organizationId,
+            brandId,
             limit: params?.limit ?? 20,
             offset: params?.offset ?? 0,
             ...params,
@@ -349,7 +349,7 @@ export function createExperienceActivities(db: Database) {
         insertExperience: insertExperience(db),
         findExperienceById: findExperienceById(db),
         listExperiences: listExperiences(db),
-        listExperiencesByOrganization: listExperiencesByOrganization(db),
+        listExperiencesByBrand: listExperiencesByBrand(db),
         updateExperience: updateExperience(db),
         removeExperience: removeExperience(db),
     };

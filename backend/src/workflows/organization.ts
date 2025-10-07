@@ -14,9 +14,24 @@ import { proxyActivities, ApplicationFailure, log } from '@temporalio/workflow';
 import type * as workosActivities from '../activities/auth/workos';
 import type { Organization } from '../activities/db/schema';
 import type { OrganizationCreateInput, createOrganizationActivities } from '../activities/db/models/organization';
+import type { InsertBrand, DeleteBrand } from '../activities/db/models/brand';
 
 // DB Activity Proxy - ファクトリ関数の戻り値型を使用
 const { removeOrganization, insertOrganization } = proxyActivities<ReturnType<typeof createOrganizationActivities>>({
+    startToCloseTimeout: '30s',
+    retry: {
+        initialInterval: '1s',
+        maximumInterval: '10s',
+        backoffCoefficient: 2,
+        maximumAttempts: 3,
+    },
+});
+
+// Brand Activity Proxy
+const { insertBrand, deleteBrand } = proxyActivities<{
+    insertBrand: InsertBrand;
+    deleteBrand: DeleteBrand;
+}>({
     startToCloseTimeout: '30s',
     retry: {
         initialInterval: '1s',
@@ -73,8 +88,9 @@ async function compensate(compensations: Compensation[]): Promise<void> {
  * SAGA パターン:
  * 1. WorkOS Organization 作成
  * 2. DB Organization 作成（WorkOS Organization ID を id として使用）
- * 3. 管理者ユーザーを WorkOS に作成（オプション）
- * 4. 失敗時は作成済みリソースを削除
+ * 3. デフォルト Brand 作成（Standard プラン用）
+ * 4. 管理者ユーザーを WorkOS に作成（オプション）
+ * 5. 失敗時は作成済みリソースを削除
  * 
  * @throws ApplicationFailure - Activity呼び出しのエラーはそのまま伝播
  */
@@ -130,7 +146,30 @@ export async function createOrganizationWithWorkosWorkflow(
             },
         });
 
-        // Step 3: 管理者ユーザーを WorkOS に作成（オプション）
+        // Step 3: デフォルト Brand 作成（Standard プラン用）
+        log.info('Creating default Brand', { organizationId: dbOrg.id });
+        const defaultBrand = await insertBrand({
+            organizationId: dbOrg.id,
+            name: input.name, // Organization名をBrand名として使用
+            description: undefined,
+            logoUrl: undefined,
+            websiteUrl: undefined,
+            isDefault: true, // デフォルトBrandフラグ
+        });
+        console.log("Default Brand creation result:", defaultBrand);
+
+        compensations.unshift({
+            message: `Deleting default Brand: ${defaultBrand.id}`,
+            fn: async () => {
+                try {
+                    await deleteBrand(defaultBrand.id);
+                } catch (error) {
+                    log.error('Failed to delete default Brand', { error });
+                }
+            },
+        });
+
+        // Step 4: 管理者ユーザーを WorkOS に作成（オプション）
         if (input.adminUser) {
             log.info('Creating WorkOS admin user', { email: input.adminUser.email });
             try {

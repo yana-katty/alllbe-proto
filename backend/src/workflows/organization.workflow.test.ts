@@ -69,14 +69,30 @@ describe('Organization Workflows', () => {
                 updatedAt: new Date(),
             };
 
+            const mockBrand = {
+                id: 'brand-123',
+                organizationId: 'workos-org-123',
+                name: 'Test Organization',
+                isDefault: true,
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+
             // モックアクティビティの定義（vi.fn()を使用）
             const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
             const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
+            const insertBrand = vi.fn().mockResolvedValue(mockBrand);
+            const removeBrand = vi.fn().mockResolvedValue(true);
+            const removeOrganization = vi.fn().mockResolvedValue(true);
             const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
 
             const worker = await createTestWorker({
                 createWorkosOrganizationActivity,
                 insertOrganization,
+                insertBrand,
+                removeBrand,
+                removeOrganization,
                 deleteWorkosOrganizationActivity,
             });
 
@@ -141,11 +157,17 @@ describe('Organization Workflows', () => {
                     nonRetryable: false,
                 })
             );
+            const insertBrand = vi.fn().mockResolvedValue({ id: 'brand-123' });
+            const removeBrand = vi.fn().mockResolvedValue(true);
+            const removeOrganization = vi.fn().mockResolvedValue(true);
             const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
 
             const worker = await createTestWorker({
                 createWorkosOrganizationActivity,
                 insertOrganization,
+                insertBrand,
+                removeBrand,
+                removeOrganization,
                 deleteWorkosOrganizationActivity,
             });
 
@@ -197,6 +219,16 @@ describe('Organization Workflows', () => {
                 updatedAt: new Date(),
             };
 
+            const mockBrand = {
+                id: 'brand-123',
+                organizationId: 'workos-org-123',
+                name: 'Test Organization',
+                isDefault: true,
+                isActive: true,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+
             const mockUser = {
                 id: 'user-123',
                 email: 'admin@example.com',
@@ -211,10 +243,14 @@ describe('Organization Workflows', () => {
             // モックアクティビティの定義（vi.fn()を使用）
             // - WorkOS組織作成成功
             // - DB組織作成成功
+            // - デフォルトBrand作成成功
             // - 管理者ユーザー作成成功
             // - 組織メンバーシップ作成成功
             const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
             const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
+            const insertBrand = vi.fn().mockResolvedValue(mockBrand);
+            const removeBrand = vi.fn().mockResolvedValue(true);
+            const removeOrganization = vi.fn().mockResolvedValue(true);
             const createWorkosUserActivity = vi.fn().mockResolvedValue(mockUser);
             const createWorkosOrganizationMembershipActivity = vi.fn().mockResolvedValue(mockMembership);
             const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
@@ -222,6 +258,9 @@ describe('Organization Workflows', () => {
             const worker = await createTestWorker({
                 createWorkosOrganizationActivity,
                 insertOrganization,
+                insertBrand,
+                removeBrand,
+                removeOrganization,
                 createWorkosUserActivity,
                 createWorkosOrganizationMembershipActivity,
                 deleteWorkosOrganizationActivity,
@@ -282,8 +321,20 @@ describe('Organization Workflows', () => {
                 })
             );
 
+            // WorkOS作成が失敗するため、以下は呼ばれない
+            const insertOrganization = vi.fn();
+            const insertBrand = vi.fn();
+            const removeBrand = vi.fn();
+            const removeOrganization = vi.fn();
+            const deleteWorkosOrganizationActivity = vi.fn();
+
             const worker = await createTestWorker({
                 createWorkosOrganizationActivity,
+                insertOrganization,
+                insertBrand,
+                removeBrand,
+                removeOrganization,
+                deleteWorkosOrganizationActivity,
             });
 
             // Workflow実行（エラーが期待される）

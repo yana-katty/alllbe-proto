@@ -39,6 +39,9 @@ UIデザインから価格設定に至るまで、すべての製品決定は「
 - **Enterprise Ready 設計**: WorkOS を活用した SSO 対応・厳格な従業員ログイン管理
 - **Organization 管理**: 企業・団体が Organization エンティティを管理
 - **Brand 管理**: Organization 配下に複数のブランド（Standard: 1個、Enterprise: 最大100個）
+  - Organization作成時に自動でデフォルトBrand作成（isDefault: true）
+  - Standard: 1 Brand固定、Enterprise: 最大100 Brands
+  - Experience → Brand → Organization の階層構造確立
 - **権限管理**: Organization 配下の管理側ユーザーの所属・権限設定、Brand別のアクセス制御
 - **Multi-tenant アーキテクチャ**: 各 Organization の独立したデータ管理
 - **プラン制限**: 

@@ -338,20 +338,106 @@ export const brandRouter = router({
 
 ## 実装の優先順位
 
-### Phase 1.5: Brand導入（即時実装）
+### Phase 1.5: Brand導入 - ドキュメント整理（完了✅）
 - [x] Brand要件定義ドキュメント作成
-- [ ] auth.instructions.md 更新（Workspace → Brand）
-- [ ] business-requirements.instructions.md 更新
-- [ ] schema.ts へのBrandテーブル追加
-- [ ] マイグレーションファイル作成・実行
-- [ ] Brand Activity/Workflow 実装
-- [ ] Brand tRPC エンドポイント実装
-- [ ] Organization作成時のデフォルトBrand自動作成
+- [x] auth.instructions.md 更新（Workspace → Brand）
+- [x] business-requirements.instructions.md 更新
+- [x] database.instructions.md 更新
+- [x] schema.ts へのBrandテーブル追加
+- [x] マイグレーションファイル作成
+
+### Phase 1.5: Brand導入 - 実装作業（次のタスク🚀）
+
+#### 1. マイグレーション実行とDB確認
+```bash
+cd backend
+npm run db:migrate
+# または
+npm run db:push  # 開発環境の場合
+```
+
+**確認事項**:
+- [ ] `brands` テーブルが作成されていること
+- [ ] 既存の `organizations` に対してデフォルトBrandが作成されていること
+- [ ] `experiences.brand_id` カラムが追加され、既存データが正しく紐づいていること
+- [ ] インデックスが正しく作成されていること
+
+#### 2. Brand Activity 実装（backend/src/activities/db/models/brand.ts）
+```typescript
+// 以下の関数を実装:
+// - insertBrand(db: Database): InsertBrand
+// - findBrandById(db: Database): FindBrandById
+// - findBrandsByOrganizationId(db: Database): FindBrandsByOrganizationId
+// - findDefaultBrandByOrganizationId(db: Database): FindDefaultBrandByOrganizationId
+// - updateBrand(db: Database): UpdateBrand
+// - deleteBrand(db: Database): DeleteBrand
+// - countBrandsByOrganizationId(db: Database): CountBrandsByOrganizationId
+```
+
+**エラーハンドリング**:
+- [ ] `BrandErrorType` enum の定義（NOT_FOUND, ALREADY_EXISTS, LIMIT_REACHED, HAS_DEPENDENCIES, etc.）
+- [ ] `createBrandError` ファクトリ関数の実装
+- [ ] ApplicationFailure による統一的なエラー処理
+
+#### 3. Brand Actions 実装（backend/src/actions/brand.ts）
+```typescript
+// 以下のビジネスロジック関数を実装:
+// - canCreateBrand(): プラン制限チェック（Standard: 1, Enterprise: 100）
+// - createBrand(): Brand作成（制限チェック含む）
+// - getBrandById(): Brand取得
+// - listBrandsByOrganization(): Organization配下のBrand一覧
+// - updateBrand(): Brand更新
+// - deleteBrand(): Brand削除（依存関係チェック含む）
+```
+
+#### 4. Brand Workflow 実装（backend/src/workflows/brand.ts）
+```typescript
+// 以下のWorkflowを実装:
+// - createBrandWorkflow(): Brand作成（SAGAパターン）
+// - updateBrandWorkflow(): Brand更新
+// - deleteBrandWorkflow(): Brand削除（Experience等のチェック）
+```
+
+**重要**: Organization作成Workflowも更新が必要
+- `backend/src/workflows/organization.ts` の `createOrganizationWorkflow` 内で、
+  Organization作成後に自動でデフォルトBrandを作成するステップを追加
+
+#### 5. Brand tRPC エンドポイント実装（backend/src/trpc/brand.ts）
+```typescript
+export const brandRouter = router({
+  list: protectedProcedure
+    .input(z.object({ organizationId: z.string() }))
+    .query(async ({ input }) => { /* ... */ }),
+  
+  create: protectedProcedure  // Enterpriseプランのみ
+    .input(z.object({ organizationId: z.string(), name: z.string(), ... }))
+    .mutation(async ({ input }) => { /* ... */ }),
+  
+  update: protectedProcedure
+    .input(z.object({ brandId: z.string(), name: z.string().optional(), ... }))
+    .mutation(async ({ input }) => { /* ... */ }),
+  
+  delete: protectedProcedure  // Enterpriseプランのみ
+    .input(z.object({ brandId: z.string() }))
+    .mutation(async ({ input }) => { /* ... */ }),
+});
+```
+
+#### 6. 既存コードの更新
+- [ ] `backend/src/activities/db/models/experience.ts`: `organizationId` → `brandId` に変更
+- [ ] `backend/src/actions/experience.ts`: Brand経由のアクセス制御に変更
+- [ ] `backend/src/workflows/experience.ts`: Brand検証ステップの追加
+- [ ] `backend/src/trpc/experience.ts`: Brand IDを使用するように変更
+
+#### 7. テストの実装
+- [ ] `backend/src/activities/db/models/brand.test.ts`: Activity単体テスト
+- [ ] `backend/src/actions/brand.test.ts`: Actions単体テスト
+- [ ] `backend/src/workflows/brand.test.ts`: Workflow統合テスト
 
 ### Phase 2: Enterprise機能（将来実装）
 - [ ] 複数Brand作成UI
 - [ ] Brand間の統合レポート
-- [ ] Brand別権限管理
+- [ ] Brand別権限管理（brand_memberships テーブル）
 - [ ] SSO統合強化
 
 ## 参考資料
@@ -369,3 +455,173 @@ export const brandRouter = router({
 2. **WorkOS制約の回避**: Organization配下での細分化構造を自社DB側で実現
 3. **マルチブランド運営**: 大企業の複数ブランド・事業部管理に対応
 4. **段階的実装**: Phase 1ではStandardプラン（1 Brand）のみ、Phase 2でEnterprise機能を追加
+
+## 次のエージェントへの引き継ぎ事項
+
+### 📋 実装完了（2025年10月7日）
+
+**✅ Phase 1.5: Brand導入 - 完全実装済み**:
+
+1. **データベース層**:
+   - ✅ `brands` テーブル作成（schema.ts + マイグレーション）
+   - ✅ `experiences.brandId` への移行（organizationId → brandId）
+   - ✅ インデックスと外部キー制約の設定
+
+2. **Activity層**（backend/src/activities/db/models/brand.ts）:
+   - ✅ 7つのBrand Activity関数実装
+   - ✅ ApplicationFailureベースのエラーハンドリング
+   - ✅ 16テスト（全通過）
+
+3. **Actions層**（backend/src/actions/brand.ts）:
+   - ✅ 9つのBrand Actions実装
+   - ✅ プラン制限チェック（Standard: 1個、Enterprise: 100個）
+   - ✅ 22テスト（全通過）
+
+4. **Workflow層**（backend/src/workflows/brand.ts + organization.ts）:
+   - ✅ Brand作成・更新・削除Workflow（SAGAパターン）
+   - ✅ Organization作成時のデフォルトBrand自動作成
+   - ✅ 補償処理の完全実装
+
+5. **tRPC API層**（backend/src/trpc/brand.ts）:
+   - ✅ 6エンドポイント（list/getById/getDefault/create/update/delete）
+   - ✅ Temporal Workflowとの統合
+   - ✅ 1スモークテスト（全通過）
+
+6. **Experience層のBrand移行**:
+   - ✅ Experience Activity層でのbrandId利用
+   - ✅ 既存コードの更新完了
+
+7. **テスト**:
+   - ✅ 合計46テスト全通過（Brand: 39, Organization: 7）
+   - ✅ テスト戦略の確立と文書化
+
+**Phase 1.5は完全に完了しています。次フェーズへ進む準備が整いました。**
+
+### 🎯 実装時の重要ポイント
+
+#### Standard プラン（Phase 1）の制約
+```typescript
+// Brand数制限: 1つのみ（Organization作成時に自動作成）
+// - isDefault: true のBrandが1つだけ存在
+// - UI上でBrand作成ボタンは非表示
+// - API層でも追加作成を拒否
+
+// メンバー数制限: 10人まで（WorkOS側でチェック）
+export async function canInviteMember(
+    organizationId: string, 
+    planType: 'standard' | 'enterprise'
+): Promise<boolean> {
+    const members = await workos.userManagement.listOrganizationMemberships({
+        organizationId,
+    });
+    return planType === 'standard' 
+        ? members.data.length < 10 
+        : members.data.length < 1000;
+}
+```
+
+#### エラーハンドリングパターン
+```typescript
+// backend/src/activities/db/models/brand.ts
+export enum BrandErrorType {
+    NOT_FOUND = 'BRAND_NOT_FOUND',
+    ALREADY_EXISTS = 'BRAND_ALREADY_EXISTS',
+    LIMIT_REACHED = 'BRAND_LIMIT_REACHED',
+    HAS_DEPENDENCIES = 'BRAND_HAS_DEPENDENCIES',
+    INVALID_INPUT = 'BRAND_INVALID_INPUT',
+    DATABASE_ERROR = 'BRAND_DATABASE_ERROR',
+}
+
+export const createBrandError = (info: BrandErrorInfo): ApplicationFailure => {
+    return ApplicationFailure.create({
+        message: info.message,
+        type: info.type,
+        details: info.details ? [info.details] : undefined,
+        nonRetryable: info.nonRetryable ?? true,
+    });
+};
+```
+
+#### Organization作成時のデフォルトBrand作成
+```typescript
+// backend/src/workflows/organization.ts
+export async function createOrganizationWorkflow(
+    input: CreateOrganizationInput
+): Promise<Organization> {
+    const compensations: Compensation[] = [];
+    
+    try {
+        // Step 1: WorkOS Organization 作成
+        const workosOrg = await createWorkosOrganizationActivity({ ... });
+        compensations.unshift({ ... });
+
+        // Step 2: DB に Organization 保存
+        const org = await insertOrganizationActivity({ id: workosOrg.id });
+        compensations.unshift({ ... });
+
+        // Step 3: デフォルトBrand作成（新規追加）⭐
+        const defaultBrand = await insertBrandActivity({
+            organizationId: org.id,
+            name: 'Default Brand', // または Organization名を使用
+            isDefault: true,
+            isActive: true,
+        });
+        compensations.unshift({
+            message: 'reversing default brand creation',
+            fn: () => deleteBrandActivity(defaultBrand.id),
+        });
+
+        return org;
+    } catch (error) {
+        await compensate(compensations);
+        throw error;
+    }
+}
+```
+
+### 📚 参考資料
+
+**実装パターン参考**:
+- `backend/src/activities/db/models/organization.ts`: 基本的なActivity実装パターン
+- `backend/src/actions/organization.ts`: Actions層の依存注入パターン
+- `backend/src/workflows/organization.ts`: Workflow + SAGAパターン
+- `backend/src/trpc/organization.ts`: tRPCエンドポイント実装
+
+**設計ドキュメント**:
+- `.github/instructions/activities.instructions.md`: Activity実装ガイドライン
+- `.github/instructions/actions.instructions.md`: Actions実装ガイドライン
+- `.github/instructions/workflows.instructions.md`: Workflow実装ガイドライン
+- `.github/instructions/trpc.instructions.md`: tRPC実装ガイドライン
+- `.github/instructions/testing.instructions.md`: テスト実装ガイドライン
+
+### ⚠️ 注意事項
+
+1. **マイグレーション実行後の確認必須**:
+   - 既存の全OrganizationにデフォルトBrandが作成されているか
+   - 既存のExperienceがBrandに正しく紐づいているか
+
+2. **後方互換性**:
+   - 既存のExperience関連のAPIは、Brand経由でもアクセス可能にする
+   - Organization IDからBrand IDへの変換ロジックが必要な場合がある
+
+3. **プラン制限の実装**:
+   - Standard プランでは UI 上で Brand 作成ボタンを非表示
+   - API層でも `BRAND_LIMIT_REACHED` エラーで拒否
+   - Enterprise プランへのアップグレードパスを考慮
+
+4. **Brand削除時の依存関係チェック**:
+   - Experience、Booking等が存在する場合は削除不可
+   - デフォルトBrand（isDefault: true）は削除不可
+
+### 🧪 テスト戦略
+
+```typescript
+// 優先的にテストすべき項目:
+// 1. Brand作成時のプラン制限チェック（Standard: 1個まで）
+// 2. デフォルトBrandの自動作成（Organization作成時）
+// 3. Brand削除時の依存関係チェック（Experience存在時は削除不可）
+// 4. Experience → Brand → Organization の参照整合性
+// 5. ApplicationFailure による適切なエラーハンドリング
+```
+
+実装を開始する際は、上記の「Phase 1.5: Brand導入 - 実装作業」のチェックリストに従って進めてください。
