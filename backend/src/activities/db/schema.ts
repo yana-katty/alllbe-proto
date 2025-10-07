@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, integer, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
 
@@ -397,7 +397,7 @@ export const experienceAssets = pgTable('experience_assets', {
     accessLevel: varchar('access_level', { length: 50 }).notNull().default('public'), // 'public', 'ticket_holder', 'attended'
 
     // 表示順序
-    displayOrder: varchar('display_order', { length: 50 }).notNull().default('0'),
+    displayOrder: integer('display_order').notNull().default(0),
 
     // メタデータ
     fileSize: varchar('file_size', { length: 100 }), // ファイルサイズ（表示用）
@@ -431,7 +431,7 @@ export const insertExperienceAssetSchema = createInsertSchema(experienceAssets, 
     category: z.enum(['story', 'making', 'guide', 'column', 'interview', 'other']).optional(),
     categoryLabel: z.string().optional(),
     accessLevel: z.enum(['public', 'ticket_holder', 'attended']).default('public'),
-    displayOrder: z.string().default('0'),
+    displayOrder: z.number().int().default(0),
     fileSize: z.string().optional(),
     duration: z.string().optional(),
 });

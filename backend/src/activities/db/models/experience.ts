@@ -128,26 +128,30 @@ export type RemoveExperience = (id: string) => Promise<boolean>;
 /**
  * Experience を挿入
  * 
+ * @throws ApplicationFailure (type: EXPERIENCE_INVALID_INPUT) - 入力バリデーションエラー
  * @throws ApplicationFailure (type: EXPERIENCE_DATABASE_ERROR) - DB操作エラー
  */
 export const insertExperience = (db: Database): InsertExperience =>
     async (data: ExperienceCreateInput): Promise<Experience> => {
         try {
+            // 入力バリデーション
+            const validatedData = experienceCreateSchema.parse(data);
+
             const result = await db.insert(experiences).values({
-                brandId: data.brandId,
-                title: data.title,
-                description: data.description,
-                location: data.location,
-                capacity: data.capacity,
-                price: data.price,
-                experienceType: data.experienceType,
-                scheduledStartAt: data.scheduledStartAt,
-                scheduledEndAt: data.scheduledEndAt,
-                periodStartDate: data.periodStartDate,
-                periodEndDate: data.periodEndDate,
-                status: data.status ?? 'draft',
-                coverImageUrl: data.coverImageUrl,
-                tags: data.tags,
+                brandId: validatedData.brandId,
+                title: validatedData.title,
+                description: validatedData.description,
+                location: validatedData.location,
+                capacity: validatedData.capacity,
+                price: validatedData.price,
+                experienceType: validatedData.experienceType,
+                scheduledStartAt: validatedData.scheduledStartAt,
+                scheduledEndAt: validatedData.scheduledEndAt,
+                periodStartDate: validatedData.periodStartDate,
+                periodEndDate: validatedData.periodEndDate,
+                status: validatedData.status ?? 'draft',
+                coverImageUrl: validatedData.coverImageUrl,
+                tags: validatedData.tags,
             }).returning();
 
             if (!result[0]) {
@@ -162,6 +166,15 @@ export const insertExperience = (db: Database): InsertExperience =>
         } catch (error) {
             if (error instanceof ApplicationFailure) {
                 throw error;
+            }
+            // Zodバリデーションエラー
+            if (error instanceof Error && error.name === 'ZodError') {
+                throw createExperienceError({
+                    type: ExperienceErrorType.INVALID_INPUT,
+                    message: 'Invalid input data',
+                    details: error,
+                    nonRetryable: true,
+                });
             }
             throw createExperienceError({
                 type: ExperienceErrorType.DATABASE_ERROR,

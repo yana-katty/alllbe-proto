@@ -66,7 +66,7 @@ export const experienceAssetCreateSchema = z.object({
     category: z.enum(['story', 'making', 'guide', 'column', 'interview', 'other']).optional(),
     categoryLabel: z.string().optional(),
     accessLevel: z.enum(['public', 'ticket_holder', 'attended']).default('public'),
-    displayOrder: z.string().default('0'),
+    displayOrder: z.number().int().default(0),
     fileSize: z.string().optional(),
     duration: z.string().optional(),
 });
@@ -113,25 +113,29 @@ export type RemoveExperienceAsset = (id: string) => Promise<boolean>;
 /**
  * ExperienceAsset を挿入
  * 
+ * @throws ApplicationFailure (type: EXPERIENCE_ASSET_INVALID_INPUT) - 入力バリデーションエラー
  * @throws ApplicationFailure (type: EXPERIENCE_ASSET_DATABASE_ERROR) - DB操作エラー
  */
 export const insertExperienceAsset = (db: Database): InsertExperienceAsset =>
     async (data: ExperienceAssetCreateInput): Promise<ExperienceAsset> => {
         try {
+            // 入力バリデーション
+            const validatedData = experienceAssetCreateSchema.parse(data);
+
             const result = await db.insert(experienceAssets).values({
-                experienceId: data.experienceId,
-                title: data.title,
-                description: data.description,
-                assetType: data.assetType,
-                assetUrl: data.assetUrl,
-                thumbnailUrl: data.thumbnailUrl,
-                contentTiming: data.contentTiming,
-                category: data.category,
-                categoryLabel: data.categoryLabel,
-                accessLevel: data.accessLevel ?? 'public',
-                displayOrder: data.displayOrder ?? '0',
-                fileSize: data.fileSize,
-                duration: data.duration,
+                experienceId: validatedData.experienceId,
+                title: validatedData.title,
+                description: validatedData.description,
+                assetType: validatedData.assetType,
+                assetUrl: validatedData.assetUrl,
+                thumbnailUrl: validatedData.thumbnailUrl,
+                contentTiming: validatedData.contentTiming,
+                category: validatedData.category,
+                categoryLabel: validatedData.categoryLabel,
+                accessLevel: validatedData.accessLevel ?? 'public',
+                displayOrder: validatedData.displayOrder ?? 0,
+                fileSize: validatedData.fileSize,
+                duration: validatedData.duration,
             }).returning();
 
             if (!result[0]) {
@@ -146,6 +150,15 @@ export const insertExperienceAsset = (db: Database): InsertExperienceAsset =>
         } catch (error) {
             if (error instanceof ApplicationFailure) {
                 throw error;
+            }
+            // Zodバリデーションエラー
+            if (error instanceof Error && error.name === 'ZodError') {
+                throw createExperienceAssetError({
+                    type: ExperienceAssetErrorType.INVALID_INPUT,
+                    message: 'Invalid input data',
+                    details: error,
+                    nonRetryable: true,
+                });
             }
             throw createExperienceAssetError({
                 type: ExperienceAssetErrorType.DATABASE_ERROR,

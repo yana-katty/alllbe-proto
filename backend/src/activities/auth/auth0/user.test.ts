@@ -110,12 +110,12 @@ describe('Auth0 User Activities (Integration)', () => {
             console.error('Failed to initialize Auth0 client:', error);
             throw error;
         }
-    });
+    }, 30000); // 30秒のタイムアウト
 
     afterAll(async () => {
         // テスト後にすべてのユーザーを再度クリーンアップ
         await cleanupAllTestUsers();
-    });
+    }, 30000); // 30秒のタイムアウト
 
     describe('createAuth0User', () => {
         it('should create user successfully with all fields', async () => {

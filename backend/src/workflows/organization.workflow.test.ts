@@ -80,20 +80,20 @@ describe('Organization Workflows', () => {
             };
 
             // モックアクティビティの定義（vi.fn()を使用）
-            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const createWorkosOrganization = vi.fn().mockResolvedValue(mockWorkosOrg);
             const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
             const insertBrand = vi.fn().mockResolvedValue(mockBrand);
             const removeBrand = vi.fn().mockResolvedValue(true);
             const removeOrganization = vi.fn().mockResolvedValue(true);
-            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
+            const deleteWorkosOrganization = vi.fn().mockResolvedValue(true);
 
             const worker = await createTestWorker({
-                createWorkosOrganizationActivity,
+                createWorkosOrganization,
                 insertOrganization,
                 insertBrand,
                 removeBrand,
                 removeOrganization,
-                deleteWorkosOrganizationActivity,
+                deleteWorkosOrganization,
             });
 
             // Workflow実行
@@ -115,8 +115,8 @@ describe('Organization Workflows', () => {
             expect(result.id).toBe('workos-org-123');
 
             // アサーション: モック関数が期待通りに呼ばれたか検証
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledWith({
+            expect(createWorkosOrganization).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganization).toHaveBeenCalledWith({
                 name: 'Test Organization',
                 domains: ['example.com'],
             });
@@ -127,7 +127,7 @@ describe('Organization Workflows', () => {
             });
 
             // 補償処理は呼ばれない（成功時）
-            expect(deleteWorkosOrganizationActivity).not.toHaveBeenCalled();
+            expect(deleteWorkosOrganization).not.toHaveBeenCalled();
         });
 
         it('should compensate when DB creation fails after WorkOS creation', async () => {
@@ -149,7 +149,7 @@ describe('Organization Workflows', () => {
             // - WorkOS組織作成は成功
             // - DB組織作成は失敗（DATABASE_ERROR）
             // - 補償処理でWorkOS組織削除が呼ばれることを検証
-            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const createWorkosOrganization = vi.fn().mockResolvedValue(mockWorkosOrg);
             const insertOrganization = vi.fn().mockRejectedValue(
                 ApplicationFailure.create({
                     message: 'Database error',
@@ -160,15 +160,15 @@ describe('Organization Workflows', () => {
             const insertBrand = vi.fn().mockResolvedValue({ id: 'brand-123' });
             const removeBrand = vi.fn().mockResolvedValue(true);
             const removeOrganization = vi.fn().mockResolvedValue(true);
-            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
+            const deleteWorkosOrganization = vi.fn().mockResolvedValue(true);
 
             const worker = await createTestWorker({
-                createWorkosOrganizationActivity,
+                createWorkosOrganization,
                 insertOrganization,
                 insertBrand,
                 removeBrand,
                 removeOrganization,
-                deleteWorkosOrganizationActivity,
+                deleteWorkosOrganization,
             });
 
             // Workflow実行（エラーが期待される）
@@ -189,12 +189,12 @@ describe('Organization Workflows', () => {
             ).rejects.toThrow();
 
             // アサーション: モック関数が期待通りに呼ばれたか検証
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganization).toHaveBeenCalledTimes(1);
             expect(insertOrganization).toHaveBeenCalledTimes(3); // 3回リトライ
 
             // アサーション: 補償処理が実行されたことを確認
-            expect(deleteWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
-            expect(deleteWorkosOrganizationActivity).toHaveBeenCalledWith('workos-org-123');
+            expect(deleteWorkosOrganization).toHaveBeenCalledTimes(1);
+            expect(deleteWorkosOrganization).toHaveBeenCalledWith('workos-org-123');
         });
 
         it('should create organization with admin user', async () => {
@@ -246,24 +246,24 @@ describe('Organization Workflows', () => {
             // - デフォルトBrand作成成功
             // - 管理者ユーザー作成成功
             // - 組織メンバーシップ作成成功
-            const createWorkosOrganizationActivity = vi.fn().mockResolvedValue(mockWorkosOrg);
+            const createWorkosOrganization = vi.fn().mockResolvedValue(mockWorkosOrg);
             const insertOrganization = vi.fn().mockResolvedValue(mockDBOrg);
             const insertBrand = vi.fn().mockResolvedValue(mockBrand);
             const removeBrand = vi.fn().mockResolvedValue(true);
             const removeOrganization = vi.fn().mockResolvedValue(true);
-            const createWorkosUserActivity = vi.fn().mockResolvedValue(mockUser);
-            const createWorkosOrganizationMembershipActivity = vi.fn().mockResolvedValue(mockMembership);
-            const deleteWorkosOrganizationActivity = vi.fn().mockResolvedValue(true);
+            const createWorkosUser = vi.fn().mockResolvedValue(mockUser);
+            const createWorkosOrganizationMembership = vi.fn().mockResolvedValue(mockMembership);
+            const deleteWorkosOrganization = vi.fn().mockResolvedValue(true);
 
             const worker = await createTestWorker({
-                createWorkosOrganizationActivity,
+                createWorkosOrganization,
                 insertOrganization,
                 insertBrand,
                 removeBrand,
                 removeOrganization,
-                createWorkosUserActivity,
-                createWorkosOrganizationMembershipActivity,
-                deleteWorkosOrganizationActivity,
+                createWorkosUser,
+                createWorkosOrganizationMembership,
+                deleteWorkosOrganization,
             });
 
             // Workflow実行（管理者ユーザー付き）
@@ -290,12 +290,12 @@ describe('Organization Workflows', () => {
             expect(result.id).toBe('workos-org-123');
 
             // アサーション: 各モック関数が期待通りに呼ばれたか検証
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganization).toHaveBeenCalledTimes(1);
             expect(insertOrganization).toHaveBeenCalledTimes(1);
 
             // 管理者ユーザー作成が呼ばれ、引数が正しいことを確認
-            expect(createWorkosUserActivity).toHaveBeenCalledTimes(1);
-            expect(createWorkosUserActivity).toHaveBeenCalledWith({
+            expect(createWorkosUser).toHaveBeenCalledTimes(1);
+            expect(createWorkosUser).toHaveBeenCalledWith({
                 email: 'admin@example.com',
                 firstName: 'Admin',
                 lastName: 'User',
@@ -303,8 +303,8 @@ describe('Organization Workflows', () => {
             });
 
             // メンバーシップ作成が呼ばれ、引数が正しいことを確認
-            expect(createWorkosOrganizationMembershipActivity).toHaveBeenCalledTimes(1);
-            expect(createWorkosOrganizationMembershipActivity).toHaveBeenCalledWith({
+            expect(createWorkosOrganizationMembership).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganizationMembership).toHaveBeenCalledWith({
                 organizationId: 'workos-org-123',
                 userId: 'user-123',
             });
@@ -313,7 +313,7 @@ describe('Organization Workflows', () => {
         it('should fail when WorkOS organization creation fails', async () => {
             // モックアクティビティの定義（vi.fn()を使用）
             // - WorkOS組織作成は失敗（INVALID_INPUTエラー）
-            const createWorkosOrganizationActivity = vi.fn().mockRejectedValue(
+            const createWorkosOrganization = vi.fn().mockRejectedValue(
                 ApplicationFailure.create({
                     message: 'Invalid domain',
                     type: OrganizationErrorType.INVALID_INPUT,
@@ -326,15 +326,15 @@ describe('Organization Workflows', () => {
             const insertBrand = vi.fn();
             const removeBrand = vi.fn();
             const removeOrganization = vi.fn();
-            const deleteWorkosOrganizationActivity = vi.fn();
+            const deleteWorkosOrganization = vi.fn();
 
             const worker = await createTestWorker({
-                createWorkosOrganizationActivity,
+                createWorkosOrganization,
                 insertOrganization,
                 insertBrand,
                 removeBrand,
                 removeOrganization,
-                deleteWorkosOrganizationActivity,
+                deleteWorkosOrganization,
             });
 
             // Workflow実行（エラーが期待される）
@@ -354,8 +354,8 @@ describe('Organization Workflows', () => {
             ).rejects.toThrow();
 
             // アサーション: モック関数が呼ばれたか検証
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledTimes(1);
-            expect(createWorkosOrganizationActivity).toHaveBeenCalledWith({
+            expect(createWorkosOrganization).toHaveBeenCalledTimes(1);
+            expect(createWorkosOrganization).toHaveBeenCalledWith({
                 name: 'Test Organization',
                 domains: ['invalid'],
             });

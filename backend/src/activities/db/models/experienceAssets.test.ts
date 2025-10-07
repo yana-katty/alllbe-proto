@@ -88,7 +88,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/video.mp4',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             };
 
             const insertFn = insertExperienceAsset(db);
@@ -118,7 +118,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/article',
                 contentTiming: 'after',
                 accessLevel: 'attended',
-                displayOrder: "1",
+                displayOrder: 1,
             };
 
             const insertFn = insertExperienceAsset(db);
@@ -137,7 +137,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: '',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             } as ExperienceAssetCreateInput;
 
             const insertFn = insertExperienceAsset(db);
@@ -166,7 +166,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/image.jpg',
                 contentTiming: 'anytime',
                 accessLevel: 'ticket_holder',
-                displayOrder: "1",
+                displayOrder: 1,
             };
 
             const insertFn = insertExperienceAsset(db);
@@ -202,7 +202,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/1',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
             await insertFn({
                 experienceId,
@@ -211,7 +211,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/2',
                 contentTiming: 'after',
                 accessLevel: 'attended',
-                displayOrder: "2",
+                displayOrder: 1,
             });
 
             const listFn = listExperienceAssets(db);
@@ -233,7 +233,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/video',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
             await insertFn({
                 experienceId,
@@ -242,7 +242,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/image',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "2",
+                displayOrder: 1,
             });
 
             const listFn = listExperienceAssets(db);
@@ -264,7 +264,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/public',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
             await insertFn({
                 experienceId,
@@ -273,7 +273,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/attended',
                 contentTiming: 'after',
                 accessLevel: 'attended',
-                displayOrder: "2",
+                displayOrder: 1,
             });
 
             const listFn = listExperienceAssets(db);
@@ -298,7 +298,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/1',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
             await insertFn({
                 experienceId: experienceId1,
@@ -307,7 +307,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/2',
                 contentTiming: 'after',
                 accessLevel: 'attended',
-                displayOrder: "2",
+                displayOrder: 1,
             });
             await insertFn({
                 experienceId: experienceId2,
@@ -316,7 +316,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/3',
                 contentTiming: 'anytime',
                 accessLevel: 'ticket_holder',
-                displayOrder: "1",
+                displayOrder: 1,
             });
 
             const listFn = listExperienceAssetsByExperience(db);
@@ -353,13 +353,13 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/old',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
 
             const patch: ExperienceAssetUpdateInput = {
                 title: 'New Title',
                 description: 'New Description',
-                displayOrder: "2",
+                displayOrder: 2,
             };
 
             const updateFn = updateExperienceAsset(db);
@@ -403,7 +403,7 @@ describe('ExperienceAsset Activity Functions (PGlite)', () => {
                 assetUrl: 'https://example.com/delete',
                 contentTiming: 'before',
                 accessLevel: 'public',
-                displayOrder: "1",
+                displayOrder: 1,
             });
 
             const removeFn = removeExperienceAsset(db);

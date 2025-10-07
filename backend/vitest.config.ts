@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
         test: {
             globals: true,
             environment: 'node',
+            maxConcurrency: 1,
             env,
             setupFiles: ['./src/test/setup-env.ts'],
             coverage: {
