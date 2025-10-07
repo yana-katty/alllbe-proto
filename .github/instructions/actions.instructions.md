@@ -8,103 +8,120 @@ applyTo: "backend/src/actions/**"
 
 - **Temporal Workflowではない通常の関数**として実装
 - **主にRead操作**: データの取得が主な目的だが、**1つの更新Activityまで許容**
-- **Activityを直接呼び出し**: proxyActivitiesを使わず、dynamic importで直接呼び出す
+- **Activityを直接呼び出し**: dynamic importで直接呼び出す
 - **tRPCから直接呼び出し可能**: Temporal Clientを経由せずに使用できる
 - **複雑な更新はWorkflowで**: 複数の更新操作や補償が必要な場合はWorkflowを使用
-
-## ファイル構造
-
-```
-actions/
-├── index.ts                # Action exports
-├── user.ts                 # User Action functions
-├── organization.ts         # Organization Action functions
-└── *.ts                    # Other action functions
-```
 
 ## 実装パターン
 
 ### 依存注入パターン（テスト容易性のため推奨）
 
-Activity関数を依存注入することで、テスト時にモックを簡単に差し込めます。
-
 ```typescript
 // actions/organization.ts
 import type { Organization } from '../activities/db/schema';
-import type { OrganizationQueryInput } from '../activities/db/models/organization';
 
-// Activity関数の型定義
-type GetOrganizationByIdActivity = (id: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
-type GetOrganizationByEmailActivity = (email: string) => Promise<{ ok: true; value: Organization | null } | { ok: false; error: any }>;
-type ListOrganizationsActivity = (params: OrganizationQueryInput) => Promise<{ ok: true; value: Organization[] } | { ok: false; error: any }>;
+type GetOrganizationByIdActivity = (id: string) => Promise<Organization | null>;
 
-// 依存関数の型定義
 interface OrganizationActionDeps {
-  getOrganizationByIdActivity: GetOrganizationByIdActivity;
-  getOrganizationByEmailActivity: GetOrganizationByEmailActivity;
-  listOrganizationsActivity: ListOrganizationsActivity;
+    getOrganizationByIdActivity: GetOrganizationByIdActivity;
 }
 
 /**
  * Organization取得 (ID指定)
- * 依存注入により、テスト時にモックを差し込める
+ * 
+ * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
+ * @throws ApplicationFailure (type: ORGANIZATION_NOT_FOUND) - 見つからない場合
  */
 export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'getOrganizationByIdActivity'>) =>
-  async (id: string): Promise<Organization | null> => {
-    const result = await deps.getOrganizationByIdActivity(id);
+    async (id: string): Promise<Organization | null> => {
+        // ApplicationFailure はそのまま throw される（呼び出し側で catch）
+        return await deps.getOrganizationByIdActivity(id);
+    };
+```
 
-    if (!result.ok) {
-      throw new Error(`Failed to get organization: ${result.error.message}`);
-    }
+### 複数のActivityを組み合わせるAction
 
-    return result.value;
-  };
+```typescript
+// actions/user.ts
+type FetchUserProfileActivity = (userId: string) => Promise<UserProfile>;
+type FetchUserPreferencesActivity = (userId: string) => Promise<UserPreferences>;
 
-/**
- * Organization取得 (Email指定)
- */
-export const getOrganizationByEmail = (deps: Pick<OrganizationActionDeps, 'getOrganizationByEmailActivity'>) =>
-  async (email: string): Promise<Organization | null> => {
-    const result = await deps.getOrganizationByEmailActivity(email);
-
-    if (!result.ok) {
-      throw new Error(`Failed to get organization: ${result.error.message}`);
-    }
-
-    return result.value;
-  };
-
-/**
- * Organization一覧取得
- */
-export const listOrganizations = (deps: Pick<OrganizationActionDeps, 'listOrganizationsActivity'>) =>
-  async (params: OrganizationQueryInput): Promise<Organization[]> => {
-    const result = await deps.listOrganizationsActivity(params);
-
-    if (!result.ok) {
-      throw new Error(`Failed to list organizations: ${result.error.message}`);
-    }
-
-    return result.value;
-  };
-
-/**
- * 実際のActivity関数を使用したファクトリ関数
- * tRPCから呼び出す際はこれを使用
- */
-export async function createOrganizationActions() {
-  const {
-    getOrganizationByIdActivity,
-    getOrganizationByEmailActivity,
-    listOrganizationsActivity,
-  } = await import('../activities/db/models/organization');
-
-  return {
-    getById: getOrganizationById({ getOrganizationByIdActivity }),
-    getByEmail: getOrganizationByEmail({ getOrganizationByEmailActivity }),
-    list: listOrganizations({ listOrganizationsActivity }),
-  };
+interface UserDetailsDeps {
+    fetchUserProfileActivity: FetchUserProfileActivity;
+    fetchUserPreferencesActivity: FetchUserPreferencesActivity;
 }
+
+/**
+ * ユーザー詳細情報を取得
+ * 複数のActivityを並列実行して結果を統合
+ */
+export const getUserWithDetails = (deps: UserDetailsDeps) =>
+    async (userId: string): Promise<UserDetails> => {
+        const [profile, preferences] = await Promise.all([
+            deps.fetchUserProfileActivity(userId),
+            deps.fetchUserPreferencesActivity(userId)
+        ]);
+
+        return {
+            ...profile,
+            preferences
+        };
+    };
+```
+
+  ## tRPCでの使用
+
+```typescript
+// trpc/organization.ts
+import { router, publicProcedure } from './base';
+import { getOrganizationById } from '../actions/organization';
+import { findOrganizationById } from '../activities/db/models/organization';
+
+export const organizationRouter = router({
+    getById: publicProcedure
+        .input(z.string())
+        .query(async ({ input }) => {
+            // Activity関数を注入してActionを呼び出し
+            const action = getOrganizationById({ getOrganizationByIdActivity: findOrganizationById(db) });
+            return await action(input);
+        }),
+});
+```
+
+## ベストプラクティス
+
+### ✅ DO（推奨）
+
+1. **Read操作をメインとする** - 主な用途はデータ取得
+2. **1つの更新Activityまで許容** - 副次的な更新（例: view count）は許容
+3. **エラーは適切にthrow** - ApplicationFailure をそのまま throw
+4. **複数のActivityを組み合わせる** - Promise.all で並列実行
+
+### ❌ DON'T（非推奨）
+
+1. **複数の更新操作を実装しない** - Workflowで行う
+2. **補償処理が必要な更新を実装しない** - Workflowで行う
+3. **Temporal Workflow機能を使わない** - proxyActivities は使用しない
+
+## ActionsとWorkflowsの使い分け
+
+| 操作タイプ | 実装場所 | 呼び出し方法 |
+|-----------|---------|-------------|
+| **Read操作** | `actions/` | tRPCから直接 |
+| **Read + 1つの更新** | `actions/` | tRPCから直接 |
+| **Create/Update/Delete** | `workflows/` | Temporal Client経由 |
+
+### 判断基準
+
+**Actionsで実装:**
+- ✅ 主にRead操作
+- ✅ 更新操作は1つまで
+- ✅ 補償処理が不要
+
+**Workflowsで実装:**
+- ✅ 複数の更新操作
+- ✅ 補償処理（SAGA）が必要
+- ✅ トランザクション的な一貫性が必要
 ```
 
 ### シンプルパターン（小規模なActionの場合）

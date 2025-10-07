@@ -6,62 +6,94 @@ applyTo: "backend/src/activities/**"
 
 ## 基本原則
 
-- **必ずNeverthrowを使用**してエラーハンドリングを行う
-- **Errorをthrowしない**（Promise<Result<T, E>>で返す）
+- **ApplicationFailure を使用**してエラーハンドリングを行う
+- **try-catch でエラーを捕捉**し、ApplicationFailure を throw する
 - 単一責任の原則に従い、1つのActivityは1つの具体的な操作のみ行う
 - **Activity内で環境変数を直接読み込まない**（依存注入パターンを使用）
 
-## ⚠️ 重要: Temporal Activity の戻り値型
+## エラーハンドリングパターン
 
-Temporal の proxyActivities で使用する Activity 関数は、**`Promise<Result<T, E>>`** 型を返す必要があります。
-`ResultAsync<T, E>` を直接返すと、Workflow で Symbol 型エラーが発生します。
-
-### 正しい実装パターン
+### ErrorType 定義 + ファクトリ関数
 
 ```typescript
-import { Result, ResultAsync } from 'neverthrow';
+import { ApplicationFailure } from '@temporalio/common';
 
-// ✅ 正しい: Promise<Result<T, E>> 型を返す
-export type InsertOrganization = (data: OrganizationCreateInput) => Promise<Result<Organization, OrganizationError>>;
+/**
+ * Organization エラータイプ
+ */
+export enum OrganizationErrorType {
+    NOT_FOUND = 'ORGANIZATION_NOT_FOUND',
+    ALREADY_EXISTS = 'ORGANIZATION_ALREADY_EXISTS',
+    INVALID_INPUT = 'ORGANIZATION_INVALID_INPUT',
+    DATABASE_ERROR = 'ORGANIZATION_DATABASE_ERROR',
+}
 
-export const insertOrganization = (db: Database): InsertOrganization => 
-  async (data: OrganizationCreateInput) => {
-    return await ResultAsync.fromPromise(
-      db.insert(organizations).values(data).returning().then(r => r[0]),
-      (error) => ({ 
-        code: OrganizationErrorCode.DATABASE, 
-        message: 'Insert failed', 
-        details: error 
-      })
-    );
-  };
+/**
+ * Organization エラー情報
+ */
+export interface OrganizationErrorInfo {
+    type: OrganizationErrorType;
+    message: string;
+    details?: unknown;
+    nonRetryable?: boolean;
+}
+
+/**
+ * Organization エラー作成ファクトリ
+ */
+export const createOrganizationError = (info: OrganizationErrorInfo): ApplicationFailure => {
+    return ApplicationFailure.create({
+        message: info.message,
+        type: info.type,
+        details: info.details ? [info.details] : undefined,
+        nonRetryable: info.nonRetryable ?? true,
+    });
+};
 ```
 
-### ❌ 間違った実装パターン
+### Activity 実装パターン
 
 ```typescript
-// ❌ 間違い: ResultAsync<T, E> を直接返す（Symbol 型エラー発生）
-export type InsertOrganization = (data: OrganizationCreateInput) => ResultAsync<Organization, OrganizationError>;
+export type InsertOrganization = (data: OrganizationCreateInput) => Promise<Organization>;
 
-export const insertOrganization = (db: Database): InsertOrganization => 
-  (data: OrganizationCreateInput) => {
-    return ResultAsync.fromPromise(
-      db.insert(organizations).values(data).returning().then(r => r[0]),
-      (error) => ({ 
-        code: OrganizationErrorCode.DATABASE, 
-        message: 'Insert failed', 
-        details: error 
-      })
-    );
-  };
+export const insertOrganization = (db: Database): InsertOrganization =>
+    async (data: OrganizationCreateInput): Promise<Organization> => {
+        try {
+            const existing = await db.select().from(organizations)
+                .where(eq(organizations.id, data.id)).limit(1);
+            
+            if (existing.length > 0) {
+                throw createOrganizationError({
+                    type: OrganizationErrorType.ALREADY_EXISTS,
+                    message: `Organization already exists: ${data.id}`,
+                    details: { organizationId: data.id },
+                    nonRetryable: true,
+                });
+            }
+
+            const result = await db.insert(organizations).values(data).returning();
+            if (!result[0]) {
+                throw createOrganizationError({
+                    type: OrganizationErrorType.DATABASE_ERROR,
+                    message: 'Failed to insert: no rows returned',
+                    nonRetryable: false,
+                });
+            }
+
+            return selectOrganizationSchema.parse(result[0]);
+        } catch (error) {
+            if (error instanceof ApplicationFailure) {
+                throw error;
+            }
+            throw createOrganizationError({
+                type: OrganizationErrorType.DATABASE_ERROR,
+                message: 'Failed to insert organization',
+                details: error,
+                nonRetryable: false,
+            });
+        }
+    };
 ```
-
-### ポイント
-
-1. **型定義**: `(params) => Promise<Result<T, E>>`
-2. **実装**: `async (params) => { return await ResultAsync.fromPromise(...) }`
-3. **内部**: ResultAsync を使って Promise を安全にラップ
-4. **外部**: Promise<Result> として返却（Temporal が期待する形）
 
 ## 依存注入パターン
 
@@ -76,65 +108,27 @@ Activity関数内で環境変数やグローバル設定を直接読み込むこ
 
 ### 実装パターン: カリー化
 
-Activity関数は**同名のカリー化された関数**として実装します。
-ファクトリー関数パターンは使用せず、個別の関数をカリー化します。
-
-#### ✅ 推奨: カリー化パターン（Promise<Result> 版）
+Activity関数は**カリー化された関数**として実装します。
 
 ```typescript
-import { Result, ResultAsync } from 'neverthrow';
+import { ApplicationFailure } from '@temporalio/common';
 import type { ManagementClient } from 'auth0';
 
-/**
- * Auth0 User 取得 Activity
- * 
- * @param client - Auth0 Management Client（依存注入）
- * @returns Activity関数
- */
-export type GetAuth0User = (userId: string) => Promise<Result<Auth0UserProfile, Auth0Error>>;
+export type GetAuth0User = (userId: string) => Promise<Auth0UserProfile>;
 
 export const getAuth0User = (client: ManagementClient): GetAuth0User =>
     async (userId: string) => {
-        return await ResultAsync.fromPromise(
-            client.users.get(userId),
-            (error) => ({
-                code: 'AUTH0_API_ERROR',
+        try {
+            return await client.users.get(userId);
+        } catch (error) {
+            throw createAuth0Error({
+                type: Auth0ErrorType.API_ERROR,
                 message: 'Failed to fetch user from Auth0',
-                details: error
-            })
-        );
+                details: error,
+                nonRetryable: false,
+            });
+        }
     };
-
-/**
- * Auth0 User 作成 Activity
- * 
- * @param client - Auth0 Management Client（依存注入）
- * @param connectionName - Auth0 Database Connection 名（依存注入）
- * @returns Activity関数
- */
-export type CreateAuth0User = (input: CreateUserInput) => Promise<Result<Auth0UserProfile, Auth0Error>>;
-
-export const createAuth0User = (client: ManagementClient, connectionName: string): CreateAuth0User =>
-    async (input: CreateUserInput) => {
-        return await ResultAsync.fromPromise(
-            client.users.create({ ...input, connection: connectionName }),
-            (error) => ({
-                code: 'AUTH0_API_ERROR',
-                message: 'Failed to create user in Auth0',
-                details: error
-            })
-        );
-    };
-```
-
-#### ❌ 非推奨: 環境変数の直接読み込み
-
-```typescript
-// ❌ BAD: Activity内で環境変数を読み込む
-export const createAuth0User = (input: CreateUserInput) => {
-    const connectionName = process.env.AUTH0_CONNECTION_NAME; // 禁止！
-    // ...
-};
 ```
 
 ### Worker での使用
@@ -144,65 +138,20 @@ Worker起動時に環境変数を読み込んで、カリー化された関数�
 ```typescript
 // worker.ts
 import { Worker } from '@temporalio/worker';
-import {
-    getAuth0ConfigFromEnv,
-    createAuth0ManagementClient,
-    getAuth0User,
-    createAuth0User,
-} from './activities/auth/auth0';
+import { getAuth0ConfigFromEnv, createAuth0ManagementClient, getAuth0User } from './activities/auth/auth0';
 
-// 起動時に環境変数を読み込む（設定漏れがあれば即エラー）
 const auth0Config = getAuth0ConfigFromEnv();
 const auth0Client = createAuth0ManagementClient(auth0Config);
 
 const worker = await Worker.create({
     activities: {
-        // カリー化された関数に依存を注入
         getAuth0User: getAuth0User(auth0Client),
-        createAuth0User: createAuth0User(auth0Client, auth0Config.connectionName),
-        // ...
     },
     taskQueue: 'main',
-    // ...
 });
 
 await worker.run();
 ```
-
-### tRPC での使用
-
-tRPC の `createContext` で環境変数を読み込んで注入します：
-
-```typescript
-// trpc/base.ts
-import { getAuth0ConfigFromEnv, createAuth0ManagementClient } from '@/activities/auth/auth0';
-
-// 起動時に環境変数を読み込む
-const auth0Config = getAuth0ConfigFromEnv();
-const auth0Client = createAuth0ManagementClient(auth0Config);
-
-export const createContext = async () => {
-    return {
-        auth0Client,
-        auth0ConnectionName: auth0Config.connectionName,
-        // ...
-    };
-};
-
-// tRPC Handler
-export const userRouter = router({
-    create: publicProcedure
-        .input(createUserSchema)
-        .mutation(async ({ input, ctx }) => {
-            // Context から依存を取得
-            const createActivity = createAuth0User(ctx.auth0Client, ctx.auth0ConnectionName);
-            const result = await createActivity(input);
-            // ...
-        }),
-});
-```
-
-参考: https://github.com/temporalio/samples-typescript/blob/main/activities-dependency-injection/src/activities.ts
 
 ## ファイル構造
 
@@ -234,73 +183,72 @@ activities/
 ### DB操作Activity
 
 ```typescript
-import { Result, ResultAsync } from 'neverthrow';
+import { ApplicationFailure } from '@temporalio/common';
 import { Database } from '../connection';
 
-/**
- * User 作成 Activity
- * 
- * @param db - Database接続（依存注入）
- * @returns Activity関数
- */
-export type InsertUser = (input: CreateUserInput) => Promise<Result<User, UserError>>;
+export type InsertUser = (input: CreateUserInput) => Promise<User>;
 
 export const createUser = (db: Database): InsertUser => 
     async (input: CreateUserInput) => {
-        return await ResultAsync.fromPromise(
-            db.insert(users).values(input).returning(),
-            (error) => ({
-                code: 'DATABASE_ERROR',
+        try {
+            const result = await db.insert(users).values(input).returning();
+            if (!result[0]) {
+                throw createUserError({
+                    type: UserErrorType.DATABASE_ERROR,
+                    message: 'Failed to create user: no rows returned',
+                    nonRetryable: false,
+                });
+            }
+            return result[0];
+        } catch (error) {
+            if (error instanceof ApplicationFailure) {
+                throw error;
+            }
+            throw createUserError({
+                type: UserErrorType.DATABASE_ERROR,
                 message: 'Failed to create user',
-                details: error
-            })
-        );
+                details: error,
+                nonRetryable: false,
+            });
+        }
     };
 ```
 
-### 外部API Activity
+## トランザクション設計の原則
+
+### 設計判断の基準
+
+1. **データを読んで判断する処理** → 必ずWorkflowで実装
+2. **複雑なフローはWorkflowで管理**すると保守性が向上する
+3. **DB層でしかできないこと** → Activity内トランザクションもOK
+
+### ✅ 推奨: Workflowで複数テーブルを管理（保守性・可読性優先）
 
 ```typescript
-import { Result, ResultAsync } from 'neverthrow';
-import type { ManagementClient } from 'auth0';
-
-/**
- * Auth0からユーザー取得 Activity
- * 
- * @param client - Auth0 ManagementClient（依存注入）
- * @returns Activity関数
- */
-export type GetAuth0User = (userId: string) => Promise<Result<Auth0User, Auth0Error>>;
-
-export const getAuth0User = (client: ManagementClient): GetAuth0User =>
-    async (userId: string) => {
-        return await ResultAsync.fromPromise(
-            client.users.get(userId),
-            (error) => ({
-                code: 'AUTH0_API_ERROR',
-                message: 'Failed to fetch user from Auth0',
-                details: error
-            })
-        );
-    };
-```
-
-## エラー定義
-
-各modelで統一的なエラータイプを定義：
-
-```typescript
-export enum UserErrorCode {
-  NOT_FOUND = 'NOT_FOUND',
-  ALREADY_EXISTS = 'ALREADY_EXISTS',
-  INVALID_INPUT = 'INVALID_INPUT',
-  DATABASE_ERROR = 'DATABASE_ERROR',
-}
-
-export interface UserError {
-  code: UserErrorCode;
-  message: string;
-  details?: unknown;
+// backend/src/workflows/booking.ts
+export async function checkInWithQRCodeWorkflow(qrCode: string) {
+  const booking = await getBookingByQrCode(qrCode);
+  
+  if (!booking) {
+    throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
+  }
+  
+  if (booking.status === 'attended') {
+    throw new ApplicationFailure('Already checked in', 'ALREADY_ATTENDED');
+  }
+  
+  await updateBooking(booking.id, {
+    status: 'attended',
+    attendedAt: new Date(),
+  });
+  
+  const payment = await getPaymentByBookingId(booking.id);
+  
+  if (payment?.paymentMethod === 'onsite' && payment.status === 'pending') {
+    await completePayment(booking.id);
+  }
+  
+  return booking;
 }
 ```
 
@@ -313,142 +261,15 @@ export interface UserError {
 export async function createBookingActivity(data: BookingCreateInput) {
     const { getDatabase } = await import('../connection');
     const db = getDatabase(); // グローバル状態に依存
-    // ...
 }
 
 // ✅ GOOD: 依存注入パターン
 export const createBookingActivity = (db: Database) =>
-    (data: BookingCreateInput): ResultAsync<Booking, BookingError> => {
-        return insertBooking(db)(data);
+    async (data: BookingCreateInput): Promise<Booking> => {
+        return await insertBooking(db)(data);
     };
 ```
 
 ### ❌ データを読んで判断する処理をActivity内で行う
 
-Activity内で「データを読む → 判断 → 処理」を行うのはアンチパターンです。
-これはWorkflowの責務です。
-
-**アンチパターン例**:
-```typescript
-// ❌ BAD: Activity内でデータを読んで判断・処理する
-export const processBookingActivity = (db: Database) =>
-    async (bookingId: string) => {
-        // ❌ データを読む → 判断 → 処理 はWorkflowの責務
-        const booking = await db.select().from(bookings).where(eq(bookings.id, bookingId));
-        
-        if (booking.status === 'confirmed') {
-            // 条件分岐して処理
-            await sendNotification(booking);
-        }
-        
-        // さらに別のテーブルを読む
-        const payment = await db.select().from(payments).where(eq(payments.bookingId, bookingId));
-        
-        if (payment.status === 'pending') {
-            // また条件分岐
-            await processPayment(payment);
-        }
-    };
-```
-
-**正しいパターン: Workflowで読み込み → 判断 → Activity呼び出し**:
-```typescript
-// ✅ GOOD: Workflowでデータを読む → 判断 → Activity呼び出し
-export async function processBookingWorkflow(bookingId: string) {
-    // Workflowでデータを読む
-    const bookingResult = await activities.getBookingById(bookingId);
-    const booking = bookingResult._unsafeUnwrap();
-    
-    // Workflowで判断
-    if (booking.status === 'confirmed') {
-        // 条件に応じてActivityを呼び出す
-        await activities.sendNotification(booking);
-    }
-    
-    // さらに別のデータを読む
-    const paymentResult = await activities.getPaymentByBookingId(bookingId);
-    const payment = paymentResult._unsafeUnwrap();
-    
-    // また判断
-    if (payment.status === 'pending') {
-        await activities.processPayment(payment.id);
-    }
-}
-```
-
-## トランザクション設計の原則
-
-### 設計判断の基準
-
-1. **DB層でしかできないこと** → Activity内トランザクションもOK
-2. **Workflowの方がコードが見やすく保守性が高い** → Workflowを優先（推奨）
-3. **データを読んで判断する処理** → 必ずWorkflowで実装
-
-### ✅ 推奨: Workflowで複数テーブルを管理（保守性・可読性優先）
-
-```typescript
-// backend/src/workflows/booking.ts
-export async function checkInWithQRCodeWorkflow(qrCode: string) {
-  // Activity 1: QRコードでBookingを取得
-  const bookingResult = await activities.getBookingByQrCode(qrCode);
-  
-  if (bookingResult.isErr() || !bookingResult.value) {
-    throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
-  }
-  
-  const booking = bookingResult.value;
-  
-  // バリデーション（Workflowで明示的に実行）
-  if (booking.status === 'attended') {
-    throw new ApplicationFailure('Already checked in', 'ALREADY_ATTENDED');
-  }
-  
-  if (booking.status === 'cancelled') {
-    throw new ApplicationFailure('Booking is cancelled', 'BOOKING_CANCELLED');
-  }
-  
-  // Activity 2: Bookingをattendedに更新
-  const updateResult = await activities.updateBooking(booking.id, {
-    status: 'attended',
-    attendedAt: new Date(),
-  });
-  
-  if (updateResult.isErr()) {
-    throw new ApplicationFailure('Failed to update booking', 'DATABASE_ERROR');
-  }
-  
-  // Activity 3: 現地払いの場合、Paymentを完了状態に更新
-  const paymentResult = await activities.getPaymentByBookingId(booking.id);
-  
-  if (paymentResult.isOk() && paymentResult.value) {
-    const payment = paymentResult.value;
-    
-    if (payment.paymentMethod === 'onsite' && payment.status === 'pending') {
-      const completeResult = await activities.completePayment(booking.id);
-      
-      if (completeResult.isErr()) {
-        log.warn('Payment completion failed', { 
-          bookingId: booking.id, 
-          error: completeResult.error 
-        });
-      }
-    }
-  }
-  
-  return updateResult.value;
-}
-```
-
-**Workflowのメリット**:
-- フローが明確で読みやすい
-- 各Activityが単純で保守しやすい
-- テストが容易（各Activityを個別にテスト可能）
-- 拡張しやすい（通知、ポイント付与などを追加しやすい）
-
-## 注意事項
-
-- ActivityはTemporalによって他のプロセスで実行される可能性があるため、純粋関数として実装する
-- 外部依存（DB接続、APIクライアント）は引数として受け取る
-- サイドエフェクトは最小限に抑える
-- **データを読んで判断する処理はWorkflowで行う**
-- **複雑なフローはWorkflowで管理すると保守性が向上する**
+Activity内で「データを読む → 判断 → 処理」を行うのはアンチパターンです。これはWorkflowの責務です。

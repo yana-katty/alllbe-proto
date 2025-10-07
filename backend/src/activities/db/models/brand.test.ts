@@ -148,8 +148,8 @@ describe('Brand Activity Functions (PGlite)', () => {
             const result = await findFn({ organizationId: orgId });
 
             expect(result).toHaveLength(2);
-            expect(result[0].organizationId).toBe(orgId);
-            expect(result[1].organizationId).toBe(orgId);
+            expect(result[0]!.organizationId).toBe(orgId);
+            expect(result[1]!.organizationId).toBe(orgId);
         });
 
         it('should filter by isActive when specified', async () => {
@@ -175,7 +175,7 @@ describe('Brand Activity Functions (PGlite)', () => {
             const activeResult = await findFn({ organizationId: orgId, isActive: true });
 
             expect(activeResult).toHaveLength(1);
-            expect(activeResult[0].name).toBe('Active Brand');
+            expect(activeResult[0]!.name).toBe('Active Brand');
         });
 
         it('should return empty array when no brands found', async () => {

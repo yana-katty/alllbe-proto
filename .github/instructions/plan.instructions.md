@@ -8,20 +8,43 @@ applyTo: "**"
 
 ### Phase 1: Foundation（基盤構築）- 3-4ヶ月
 **目標**: MVP として最低限の Experience 作成・予約機能を実現
+**ステータス**: 進行中（約40%完了）
 
 #### 必須機能
-1. **Organization 管理**: WorkOS SSO 統合、基本的な組織登録・管理
-2. **Experience CRUD**: 日時指定型・期間指定型の基本的な Experience 作成・編集・公開
-3. **ユーザー管理**: エンドユーザーのアカウント作成・認証・プロフィール管理
-4. **基本予約システム**: 予約・キャンセル・基本的な決済機能
-5. **QR コード入場**: 基本的な入場管理と来歴記録
+1. ✅ **Organization 管理**: WorkOS SSO 統合、基本的な組織登録・管理（完了）
+2. ✅ **Brand 管理**: Organization 配下のブランド管理（完了）
+3. 🚧 **Experience CRUD**: 日時指定型・期間指定型の基本的な Experience 作成・編集・公開（進行中）
+4. ⬜ **ユーザー管理**: エンドユーザーのアカウント作成・認証・プロフィール管理（未着手）
+5. ⬜ **基本予約システム**: 予約・キャンセル・基本的な決済機能（未着手）
+6. ⬜ **QR コード入場**: 基本的な入場管理と来歴記録（未着手）
 
 #### 技術的マイルストーン
-- [ ] Backend: tRPC + Temporal アーキテクチャの基盤構築
-- [ ] Database: Drizzle ORM によるスキーマ設計・マイグレーション
-- [ ] Frontend: Next.js 14 による基本的な UI/UX 実装
-- [ ] WorkOS: SSO 統合と Organization 管理機能の実装
-- [ ] 決済: 基本的な決済プロバイダー統合
+- ✅ Backend: tRPC + Temporal アーキテクチャの基盤構築（完了）
+- ✅ Database: Drizzle ORM によるスキーマ設計・マイグレーション（完了）
+- ✅ ApplicationFailure ベースのエラーハンドリング統一（完了）
+- 🚧 Frontend: Next.js 14 による基本的な UI/UX 実装（進行中）
+- ✅ WorkOS: SSO 統合と Organization 管理機能の実装（完了）
+- ⬜ 決済: 基本的な決済プロバイダー統合（未着手）
+
+#### 実装済み機能の詳細
+
+**Organization 管理** (✅ 完了):
+- WorkOS Organization CRUD
+- DB Organization との連携
+- Organization メンバー管理基盤
+- ApplicationFailure による統一的なエラーハンドリング
+
+**Brand 管理** (✅ 完了):
+- Organization 配下の Brand CRUD
+- デフォルトBrand自動作成
+- Standard/Enterprise プラン対応（1 Brand / 最大100 Brands）
+- テスト実装済み（90%以上カバレッジ）
+
+**アーキテクチャ基盤** (✅ 完了):
+- Activities / Actions / Workflows / tRPC の4層分離
+- 依存注入パターン（カリー化）
+- ApplicationFailure による型安全なエラーハンドリング
+- vitest によるテスト環境
 
 ### Phase 2: Experience Enhancement（体験強化）- 2-3ヶ月
 **目標**: 関連コンテンツとコミュニティ機能でプラットフォームの差別化を実現
@@ -51,10 +74,16 @@ applyTo: "**"
 ## 開発原則・制約
 
 ### アーキテクチャ原則
-1. **関数型プログラミング**: 純粋関数・不変性・Result 型による安全性重視
+1. **関数型プログラミング**: 純粋関数・不変性・ApplicationFailure による安全性重視
 2. **オニオンアーキテクチャ**: ドメインロジックを中心とした依存関係の制御
 3. **高階関数依存注入**: テスト容易性と疎結合の実現
 4. **型安全性**: TypeScript + Zod による実行時・コンパイル時双方の安全性
+
+### エラーハンドリング統一
+- **ApplicationFailure**: すべてのエラーを ApplicationFailure で統一
+- **ErrorType enum**: エラー種別を enum で定義
+- **ファクトリ関数**: createXxxError() でエラー生成
+- **nonRetryable フラグ**: リトライ可否を明示的に指定
 
 ### 品質基準
 - **テストカバレッジ**: 90% 以上（特にビジネスロジック層）

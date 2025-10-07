@@ -6,98 +6,118 @@ applyTo: "backend/src/**"
 
 このドキュメントは、Alllbe プラットフォームにおける予約から体験後のコンテンツ解放までの全体フローを定義します。
 
-## 🔄 アーキテクチャ変更 (2025年版)
-
-### Booking と Payment の分離
-
-**背景**: 予約情報と決済情報を分離することで、拡張性と保守性を向上。
+## アーキテクチャ: Booking と Payment の分離
 
 **設計原則**:
-- **Bookings テーブル**: 予約に関する情報（参加者数、訪問予定日時、ステータス、QRコードなど）
-- **Payments テーブル**: 決済に関する情報（支払い方法、ステータス、金額、Stripe連携IDなど）
+- **Bookings テーブル**: 予約情報（参加者数、訪問予定日時、ステータス、QRコードなど）
+- **Payments テーブル**: 決済情報（支払い方法、ステータス、金額、Stripe連携IDなど）
 - **リレーション**: `payments.bookingId` → `bookings.id` (1対1)
 
 **メリット**:
-- 複数回決済のサポート（例: 追加チケット購入、部分返金）
-- Stripe等の外部決済サービス連携が容易
+- 複数回決済のサポート（追加チケット購入、部分返金）
+- 外部決済サービス連携が容易
 - 決済履歴の明確な管理
-- 監査証跡の向上
 
----
+## 予約フロー
 
-## 目次
+### 現地決済の場合
 
-1. [予約から来場までのフロー](#予約から来場までのフロー)
-2. [来場からAfterコンテンツ解放までのフロー](#来場からafterコンテンツ解放までのフロー)
-3. [状態管理](#状態管理)
-4. [エラーハンドリング](#エラーハンドリング)
+1. **予約作成**: Booking エンティティ作成、ステータス `confirmed`、QRコード生成
+2. **Payment作成**: paymentMethod `onsite`、status `pending`
+3. **通知**: 予約確認メール、QRコード添付
 
----
+### クレジットカード決済の場合（Phase 2）
 
-## 予約から来場までのフロー
+1. **予約＋決済**: Stripe連携、決済完了後に Booking作成
+2. **Payment作成**: paymentMethod `credit_card`、status `completed`、stripePaymentIntentId保存
+3. **通知**: 決済完了メール、QRコード添付
 
-### 1. Experience 公開
+## キャンセルフロー
 
-**前提条件**:
-- Organization が Experience を作成済み
-- Experience の `status` が `published`
-- `acceptOnsitePayment` または `acceptCreditCard` が `true`
+### 現地決済のキャンセル
 
-**エンティティ**:
-```typescript
-Experience {
-  status: 'published',
-  acceptOnsitePayment: true,  // 現地払い受付
-  acceptCreditCard: false,     // クレカ払い受付（Phase 1では未実装）
-  price: '¥6,800',
-  ...
-}
+- Booking ステータス → `cancelled`
+- Payment ステータス → `cancelled`
+- 通知: キャンセル確認メール
+
+### クレジットカード決済後のキャンセル（Phase 2）
+
+- Stripe返金処理
+- Booking ステータス → `cancelled`
+- Payment ステータス → `refunded`、refundedAt記録
+- 通知: 返金完了メール
+
+## 来場フロー（QRコードチェックイン）
+
+1. **QRコード読取**: Organization端末でQRコードスキャン
+2. **バリデーション**:
+   - Booking存在チェック
+   - ステータスが `confirmed` か確認
+   - 二重チェックイン防止（`attended` の場合エラー）
+3. **現地払い処理**: paymentMethod `onsite` の場合、支払い確認後に Payment ステータス → `completed`
+4. **来場記録**: Booking ステータス → `attended`、attendedAt記録
+5. **Afterコンテンツ解放**: ExperienceAssets の accessibleAfter を有効化
+
+## Afterコンテンツアクセス
+
+### アクセス条件
+
+- **Before**: 誰でも閲覧可能（Experience の魅力を伝える）
+- **Public**: 誰でも閲覧可能
+- **Ticket Purchased**: Booking ステータス `confirmed` または `attended`
+- **After**: Booking ステータス `attended`（実際に体験済み）
+
+### 実装原則
+
+- ユーザーがコンテンツアクセス時に Booking ステータスをチェック
+- `attended` の場合のみ After コンテンツを表示
+- Phase 2: コンテンツアクセス履歴の記録
+
+## 状態遷移
+
+### Booking Status
+
+```
+draft → confirmed → attended
+         ↓
+      cancelled
 ```
 
----
+### Payment Status
 
-### 2. ユーザーによる予約
-
-#### シナリオA: 現地決済の場合
-
-**ステップ1: 予約作成**
-- ユーザーが Experience 詳細ページで「予約する」をクリック
-- 参加人数、訪問予定時刻を入力
-- 支払い方法として「現地決済」を選択
-
-**Booking エンティティ作成**:
-```typescript
-Booking {
-  id: 'booking-uuid',
-  experienceId: 'experience-uuid',
-  userId: 'user-uuid',
-  numberOfParticipants: '2',
-  scheduledVisitTime: '2025-10-15T14:00:00Z',
-  status: 'confirmed',           // 予約確定
-  qrCode: 'UNIQUE_QR_CODE_123',  // QRコード生成
-  createdAt: '2025-10-07T10:00:00Z',
-}
+```
+pending → completed
+   ↓
+cancelled / refunded
 ```
 
-**Payment エンティティ作成**:
-```typescript
-Payment {
-  id: 'payment-uuid',
-  bookingId: 'booking-uuid',     // Bookingへの参照
-  paymentMethod: 'onsite',       // 現地払い
-  status: 'pending',             // 支払い待ち
-  amount: '13600',               // 2名分（数値形式）
-  currency: 'JPY',
-  paidAt: null,                  // 未払い
-  createdAt: '2025-10-07T10:00:00Z',
-}
-```
+## エラーハンドリング
 
-**ユーザーへの通知**:
-- メールで予約確認通知
-- QRコードを添付
-- 「当日現地でお支払いください」のメッセージ
+### 予約時
 
+- Experience が `published` でない → `EXPERIENCE_NOT_AVAILABLE`
+- 定員超過 → `EXPERIENCE_FULL`
+- 無効な訪問予定時刻 → `INVALID_VISIT_TIME`
+
+### 来場時
+
+- 無効なQRコード → `INVALID_QR_CODE`
+- 既にチェックイン済み → `ALREADY_ATTENDED`
+- キャンセル済み → `BOOKING_CANCELLED`
+
+### 決済時（Phase 2）
+
+- Stripe決済失敗 → `PAYMENT_FAILED`
+- 返金失敗 → `REFUND_FAILED`
+
+## 実装方針
+
+- **予約・キャンセル**: Workflow で実装（補償処理が必要）
+- **来場記録**: Workflow で実装（複数テーブル更新、トランザクション必要）
+- **コンテンツアクセス**: Actions で実装（Read操作主体）
+- **エラーハンドリング**: ApplicationFailure を使用、適切なエラータイプを設定
+
+詳細な実装パターンについては [Backend Layers Instructions](./backend-layers.instructions.md) を参照してください。
 **アクセス可能なコンテンツ**:
 - `accessLevel: 'public'` のコンテンツ（誰でも閲覧可能）
 - `accessLevel: 'ticket_holder'` かつ `contentTiming: 'before'` のコンテンツ（予約者限定のBefore体験）

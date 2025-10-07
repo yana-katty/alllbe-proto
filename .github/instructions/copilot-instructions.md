@@ -46,103 +46,56 @@ alllbe-proto/
 ```
 backend/
 ├── src/
-│   ├── shared/
-│   │   └── errors/         # カスタムエラークラス
-│   ├── activities/
+│   ├── activities/         # DB操作・外部API呼び出し（純粋関数）
 │   │   ├── db/models/      # DB操作Activity
 │   │   └── auth/           # Auth0/WorkOS Activity
-│   ├── actions/            # Read操作（非Workflow）
-│   ├── workflows/          # Temporal Workflows (CUD)
+│   ├── actions/            # Read操作（tRPCから直接呼び出し可能）
+│   ├── workflows/          # Temporal Workflows (CUD操作)
 │   └── trpc/               # tRPC API handlers
-├── drizzle.config.ts       # Drizzle Kit設定
+├── drizzle.config.ts
 ├── package.json
 └── tsconfig.json
 ```
 
-### API呼び出しパターン
+### レイヤー構造
 
-**Frontend → Backend の通信方式：**
-- **単純なCRUD処理**: tRPC経由で呼び出し
-- **非同期処理**: Temporal経由で呼び出し
+Backend は4つの主要なレイヤーで構成されています：
 
-### オニオンアーキテクチャ + 関数型依存注入システム
+- **Activities**: DB操作・外部API呼び出しの純粋関数、ApplicationFailure をthrow
+- **Actions**: Read操作の通常関数（tRPCから直接呼び出し可能）
+- **Workflows**: CUD操作のTemporal Workflows、補償処理（SAGA）
+- **tRPC**: API エンドポイント（Actions/Workflowsを呼び出し）
 
-DB層、Domain層、API層を分離し、高階関数による依存注入でテスト容易性を実現：
+**詳細は [Backend Layers Instructions](./backend-layers.instructions.md) を参照してください。**
 
-- **activities/db/models層**: DB操作の純粋関数、try-catchでApplicationFailureをthrow
-- **actions層**: Read操作を提供、必要な関数のみ`Pick<>`で受け取り
-- **workflows層**: Temporal Workflows、ApplicationFailureはそのまま伝播
-- **trpc/handler層**: tRPC層、ApplicationFailure.typeをHTTPステータスコードにマッピング
+### エラーハンドリング統一（ApplicationFailure ベース）
 
-### エラーハンドリングパターン（ApplicationFailure ベース）
+すべてのエラーは ApplicationFailure で統一されています：
 
-#### 1. ErrorType 定義 + ファクトリ関数
 ```typescript
-// backend/src/activities/db/models/organization.ts
-import { ApplicationFailure } from '@temporalio/common';
-
-/**
- * Organization エラータイプ
- * ApplicationFailure.type に直接使用される
- */
+// ErrorType 定義
 export enum OrganizationErrorType {
     NOT_FOUND = 'ORGANIZATION_NOT_FOUND',
     ALREADY_EXISTS = 'ORGANIZATION_ALREADY_EXISTS',
-    INVALID_INPUT = 'ORGANIZATION_INVALID_INPUT',
     DATABASE_ERROR = 'ORGANIZATION_DATABASE_ERROR',
-    WORKOS_ERROR = 'ORGANIZATION_WORKOS_ERROR',
 }
 
-/**
- * Organization エラー情報
- */
-export interface OrganizationErrorInfo {
-    type: OrganizationErrorType;
-    message: string;
-    details?: unknown;
-    nonRetryable?: boolean;
-}
-
-/**
- * Organization エラー作成ファクトリ
- * 
- * @example
- * ```typescript
- * throw createOrganizationError({
- *   type: OrganizationErrorType.ALREADY_EXISTS,
- *   message: `Organization already exists: ${id}`,
- *   details: { organizationId: id },
- *   nonRetryable: true,
- * });
- * ```
- */
+// ファクトリ関数
 export const createOrganizationError = (info: OrganizationErrorInfo): ApplicationFailure => {
     return ApplicationFailure.create({
         message: info.message,
-        type: info.type, // ErrorType を type に直接使用
+        type: info.type,
         details: info.details ? [info.details] : undefined,
         nonRetryable: info.nonRetryable ?? true,
     });
 };
-```
 
-#### 2. Activity層でのエラーハンドリング
-```typescript
-// backend/src/activities/db/models/organization.ts
+// Activity層での使用
 export const insertOrganization = (db: Database): InsertOrganization =>
     async (data: OrganizationCreateInput): Promise<Organization> => {
         try {
-            const existing = await db.select().from(organizations).where(eq(organizations.id, data.id)).limit(1);
-            if (existing.length > 0) {
-                throw createOrganizationError({
-                    type: OrganizationErrorType.ALREADY_EXISTS,
-                    message: `Organization already exists: ${data.id}`,
-                    details: { organizationId: data.id },
-                    nonRetryable: true,
-                });
-            }
-
-            const result = await db.insert(organizations).values({ id: data.id }).returning();
+            // DB操作
+            const result = await db.insert(organizations).values(data).returning();
             if (!result[0]) {
                 throw createOrganizationError({
                     type: OrganizationErrorType.DATABASE_ERROR,
@@ -150,8 +103,7 @@ export const insertOrganization = (db: Database): InsertOrganization =>
                     nonRetryable: false,
                 });
             }
-
-            return selectOrganizationSchema.parse(result[0]);
+            return result[0];
         } catch (error) {
             if (error instanceof ApplicationFailure) {
                 throw error;
@@ -163,21 +115,6 @@ export const insertOrganization = (db: Database): InsertOrganization =>
                 nonRetryable: false,
             });
         }
-    };
-```
-
-#### 3. Actions層でのエラーハンドリング
-```typescript
-// backend/src/actions/organization.ts
-/**
- * @throws ApplicationFailure (type: ORGANIZATION_DATABASE_ERROR) - DB操作エラー
- * @throws ApplicationFailure (type: ORGANIZATION_NOT_FOUND) - Organization が見つからない場合
- */
-export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'findOrganizationByIdActivity'>) =>
-    async (id: string): Promise<Organization | null> => {
-        // ApplicationFailure はそのまま throw される（呼び出し側で catch）
-        const org = await deps.findOrganizationByIdActivity(id);
-        return org;
     };
 ```
 
@@ -193,54 +130,8 @@ export const getOrganizationById = (deps: Pick<OrganizationActionDeps, 'findOrga
 ### テストツール
 - **vitest**: TypeScript ネイティブ、高速、モダンなテストランナー
 - **vi.fn()**: 依存関数のモック作成
-- **期待する動作**: 関数呼び出し回数・引数・戻り値の検証
 
-### テスト例
-```ts
-import { describe, it, expect, vi } from 'vitest';
-import { ApplicationFailure } from '@temporalio/common';
-import { insertOrganization, OrganizationErrorType } from '@/activities/db/models/organization';
-
-describe('insertOrganization', () => {
-  it('should throw ApplicationFailure with ALREADY_EXISTS type when organization exists', async () => {
-    const mockDb = {
-      select: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([{ id: 'existing-org' }]),
-    };
-    
-    const insertFn = insertOrganization(mockDb as any);
-    
-    await expect(insertFn({ id: 'org-1' })).rejects.toThrow(ApplicationFailure);
-    
-    try {
-      await insertFn({ id: 'org-1' });
-    } catch (error) {
-      expect(error).toBeInstanceOf(ApplicationFailure);
-      expect((error as ApplicationFailure).type).toBe(OrganizationErrorType.ALREADY_EXISTS);
-    }
-  });
-
-  it('should create organization when it does not exist', async () => {
-    const mockEntity = { id: 'org-1', createdAt: new Date(), updatedAt: new Date(), isActive: true };
-    const mockDb = {
-      select: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([]),
-      insert: vi.fn().mockReturnThis(),
-      values: vi.fn().mockReturnThis(),
-      returning: vi.fn().mockResolvedValue([mockEntity]),
-    };
-    
-    const insertFn = insertOrganization(mockDb as any);
-    const result = await insertFn({ id: 'org-1' });
-    
-    expect(result.id).toBe('org-1');
-  });
-});
-```
+詳細なテスト例については [Testing Instructions](./testing.instructions.md) を参照してください。
 
 ## Frontend アーキテクチャ
 
