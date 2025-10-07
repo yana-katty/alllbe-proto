@@ -47,12 +47,23 @@ alllbe-proto/
 backend/
 ├── src/
 │   ├── activities/         # DB操作・外部API呼び出し（純粋関数）
-│   │   ├── db/models/      # DB操作Activity
-│   │   └── auth/           # Auth0/WorkOS Activity
+│   │   ├── db/
+│   │   │   ├── connection.ts  # Neon DB接続設定
+│   │   │   ├── migrate.ts     # マイグレーション実行
+│   │   │   ├── schema.ts      # Drizzleスキーマ定義
+│   │   │   └── models/        # DB操作Activity
+│   │   └── auth/              # Auth0/WorkOS Activity
 │   ├── actions/            # Read操作（tRPCから直接呼び出し可能）
 │   ├── workflows/          # Temporal Workflows (CUD操作)
-│   └── trpc/               # tRPC API handlers
-├── drizzle.config.ts
+│   ├── trpc/               # tRPC API handlers
+│   ├── server.ts           # tRPCサーバーエントリーポイント
+│   └── worker.ts           # Temporalワーカーエントリーポイント
+├── e2e/                    # E2Eテスト環境
+│   ├── README.md           # E2Eテストガイド
+│   ├── docker-compose.yml  # テスト環境（PostgreSQL, Temporal）
+│   └── test-data.sql       # テストデータ
+├── drizzle/                # マイグレーションファイル
+├── drizzle.config.ts       # Drizzle Kit設定
 ├── package.json
 └── tsconfig.json
 ```

@@ -20,25 +20,36 @@ Temporal Activities
 ## ディレクトリ構造
 
 ```
-backend/src/
-├── activities/
-│   ├── index.ts              # Activity exports
-│   ├── db/
-│   │   ├── models/
-│   │   │   └── organization.ts  # Organization Activity implementations
-│   │   ├── connection.ts     # Neon DB接続設定
-│   │   ├── schema.ts         # Drizzleスキーマ定義
-│   │   └── migrate.ts        # マイグレーション実行
-│   └── auth/                 # Auth Activity implementations
-├── workflows/
-│   ├── index.ts              # Workflow exports
-│   ├── organization.ts       # Organization Workflows (CUD + Read)
-│   └── *.ts                  # Other workflows
-└── trpc/
-    ├── base.ts               # tRPC設定・ミドルウェア
-    ├── index.ts              # ルーターの統合
-    ├── organization.ts       # Organization tRPC routes
-    └── *.ts                  # Other routes
+backend/
+├── src/
+│   ├── activities/    # Temporal Activities（DB操作・外部API）
+│   │   ├── db/
+│   │   │   ├── connection.ts  # Neon DB接続設定
+│   │   │   ├── migrate.ts     # マイグレーション実行
+│   │   │   ├── schema.ts      # Drizzleスキーマ定義
+│   │   │   └── models/        # データモデル（organization, brand, etc.）
+│   │   └── auth/              # 認証関連Activity（Auth0, WorkOS）
+│   ├── workflows/     # Temporal Workflows（ビジネスロジック協調）
+│   │   ├── index.ts
+│   │   └── *.ts               # Organization, Brand, etc.
+│   ├── actions/       # Read操作の通常関数（tRPCから直接呼び出し可能）
+│   │   └── *.ts
+│   ├── trpc/          # tRPC API handlers
+│   │   ├── base.ts
+│   │   ├── index.ts
+│   │   └── *.ts               # Organization, Brand, etc.
+│   ├── shared/        # 共通ユーティリティ
+│   │   └── logger/    # ロガー
+│   ├── server.ts      # tRPCサーバーエントリーポイント
+│   └── worker.ts      # Temporalワーカーエントリーポイント
+├── e2e/               # E2Eテスト環境
+│   ├── README.md      # E2Eテストガイド
+│   ├── docker-compose.yml  # テスト環境（PostgreSQL, Temporal）
+│   └── test-data.sql  # テストデータ
+├── drizzle/           # マイグレーションファイル
+├── drizzle.config.ts  # Drizzle Kit設定
+├── package.json
+└── tsconfig.json
 ```
 
 ## 主要な設計原則

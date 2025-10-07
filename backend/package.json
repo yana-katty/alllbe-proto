@@ -4,6 +4,8 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "dev:server": "tsx watch src/server.ts",
+        "dev:worker": "tsx watch src/worker.ts",
         "dev:trpc": "tsx watch src/trpc/index.ts",
         "dev:temporal": "tsx watch src/temporal/index.ts",
         "build": "tsc",
@@ -12,9 +14,13 @@
         "db:generate": "drizzle-kit generate",
         "db:migrate": "tsx src/activities/db/migrate.ts",
         "db:studio": "drizzle-kit studio",
+        "docker:up": "docker compose -f e2e/docker-compose.yml up -d",
+        "docker:down": "docker compose -f e2e/docker-compose.yml down",
+        "docker:logs": "docker compose -f e2e/docker-compose.yml logs -f",
         "type-check": "tsc --noEmit"
     },
     "dependencies": {
+        "@hono/node-server": "^1.19.5",
         "@hono/trpc-server": "^0.4.0",
         "@neondatabase/serverless": "^0.9.4",
         "@temporalio/activity": "^1.13.0",
