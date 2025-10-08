@@ -249,13 +249,11 @@ Payment.update({
 // backend/src/workflows/booking.ts
 export async function checkInWithQRCodeWorkflow(qrCode: string) {
   // Activity 1: QRコードでBookingを取得
-  const bookingResult = await activities.getBookingByQrCode(qrCode);
+  const booking = await activities.getBookingByQrCode(qrCode);
   
-  if (bookingResult.isErr() || !bookingResult.value) {
+  if (!booking) {
     throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
   }
-  
-  const booking = bookingResult.value;
   
   // バリデーション
   if (booking.status === 'attended') {
@@ -267,35 +265,27 @@ export async function checkInWithQRCodeWorkflow(qrCode: string) {
   }
   
   // Activity 2: Bookingをattendedに更新
-  const updateResult = await activities.updateBooking(booking.id, {
+  await activities.updateBooking(booking.id, {
     status: 'attended',
     attendedAt: new Date(),
   });
   
-  if (updateResult.isErr()) {
-    throw new ApplicationFailure('Failed to update booking', 'DATABASE_ERROR');
-  }
-  
   // Activity 3: 現地払いの場合、Paymentを完了状態に更新
-  const paymentResult = await activities.getPaymentByBookingId(booking.id);
+  const payment = await activities.getPaymentByBookingId(booking.id);
   
-  if (paymentResult.isOk() && paymentResult.value) {
-    const payment = paymentResult.value;
-    
-    if (payment.paymentMethod === 'onsite' && payment.status === 'pending') {
-      const completeResult = await activities.completePayment(booking.id);
-      
+  if (payment && payment.paymentMethod === 'onsite' && payment.status === 'pending') {
+    try {
+      await activities.completePayment(booking.id);
+    } catch (error) {
       // 支払い完了エラーは警告のみ（入場は成功させる）
-      if (completeResult.isErr()) {
-        log.warn('Payment completion failed', { 
-          bookingId: booking.id, 
-          error: completeResult.error 
-        });
-      }
+      log.warn('Payment completion failed', { 
+        bookingId: booking.id, 
+        error 
+      });
     }
   }
   
-  return updateResult.value;
+  return booking;
 }
 ```
 

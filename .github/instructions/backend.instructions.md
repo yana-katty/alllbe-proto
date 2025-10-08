@@ -493,15 +493,16 @@ export const userRouter = router({
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { createOrganization } from '@/domain/organization';
+import { ApplicationFailure } from '@temporalio/common';
 
 describe('createOrganization', () => {
   it('should create organization when email is unique', async () => {
     const mockDeps = {
-      insertOrganization: vi.fn().mockResolvedValue(ok(mockEntity)),
-      findOrganizationByEmail: vi.fn().mockResolvedValue(ok(null)),
+      insertOrganization: vi.fn().mockResolvedValue(mockEntity),
+      findOrganizationByEmail: vi.fn().mockResolvedValue(null),
     };
     const result = await createOrganization(mockDeps)(input);
-    expect(result.isOk()).toBe(true);
+    expect(result.id).toBe(mockEntity.id);
   });
 });
 ```

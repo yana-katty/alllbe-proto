@@ -100,15 +100,16 @@ const { createOrganizationActivity } = proxyActivities<typeof activities>({
 export async function createOrganizationWorkflow(input: CreateInput) {
   log.info('Workflow started', { email: input.email });
   
-  const result = await createOrganizationActivity(input);
-  
-  if (result.isErr()) {
-    log.error('Activity failed', { error: result.error });
-    throw new ApplicationFailure(result.error.message, result.error.code);
+  try {
+    const org = await createOrganizationActivity(input);
+    log.info('Workflow completed successfully', { orgId: org.id });
+    return org;
+  } catch (error) {
+    if (error instanceof ApplicationFailure) {
+      log.error('Activity failed', { error: error.message, type: error.type });
+    }
+    throw error;
   }
-  
-  log.info('Workflow completed successfully', { orgId: result.value.id });
-  return result.value;
 }
 ```
 

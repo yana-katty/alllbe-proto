@@ -294,9 +294,9 @@ export const events = pgTable('events', {
 
 ```typescript
 export const updateBookingActivity = (db: Database) =>
-    (id: string, patch: BookingUpdateInput): ResultAsync<Booking | null, BookingError> => {
-        return ResultAsync.fromPromise(
-            db.transaction(async (tx) => {
+    async (id: string, patch: BookingUpdateInput): Promise<Booking | null> => {
+        try {
+            return await db.transaction(async (tx) => {
                 // 単一テーブルの複数操作はトランザクションで保護
                 const booking = await tx
                     .select()
@@ -305,7 +305,11 @@ export const updateBookingActivity = (db: Database) =>
                     .limit(1);
 
                 if (booking.length === 0) {
-                    throw new Error('Booking not found');
+                    throw createBookingError({
+                        type: BookingErrorType.NOT_FOUND,
+                        message: 'Booking not found',
+                        nonRetryable: true,
+                    });
                 }
 
                 const updated = await tx
@@ -315,13 +319,18 @@ export const updateBookingActivity = (db: Database) =>
                     .returning();
 
                 return selectBookingSchema.parse(updated[0]);
-            }),
-            (error) => ({
-                code: BookingErrorCode.DATABASE,
+            });
+        } catch (error) {
+            if (error instanceof ApplicationFailure) {
+                throw error;
+            }
+            throw createBookingError({
+                type: BookingErrorType.DATABASE_ERROR,
                 message: 'Failed to update booking',
-                details: error
-            })
-        );
+                details: error,
+                nonRetryable: false,
+            });
+        }
     };
 ```
 
@@ -331,13 +340,11 @@ export const updateBookingActivity = (db: Database) =>
 // backend/src/workflows/booking.ts
 export async function checkInWithQRCodeWorkflow(qrCode: string) {
   // Activity 1: QRコードでBookingを取得
-  const bookingResult = await activities.getBookingByQrCode(qrCode);
+  const booking = await activities.getBookingByQrCode(qrCode);
   
-  if (bookingResult.isErr() || !bookingResult.value) {
+  if (!booking) {
     throw new ApplicationFailure('Booking not found', 'INVALID_QR_CODE');
   }
-  
-  const booking = bookingResult.value;
   
   // バリデーション（Workflowで明示的に実行）
   if (booking.status === 'attended') {
@@ -349,36 +356,29 @@ export async function checkInWithQRCodeWorkflow(qrCode: string) {
   }
   
   // Activity 2: Bookingをattendedに更新
-  const updateResult = await activities.updateBooking(booking.id, {
+  await activities.updateBooking(booking.id, {
     status: 'attended',
     attendedAt: new Date(),
   });
   
-  if (updateResult.isErr()) {
-    throw new ApplicationFailure('Failed to update booking', 'DATABASE_ERROR');
-  }
-  
   // Activity 3: 現地払いの場合、Paymentを完了状態に更新
-  const paymentResult = await activities.getPaymentByBookingId(booking.id);
+  const payment = await activities.getPaymentByBookingId(booking.id);
   
-  if (paymentResult.isOk() && paymentResult.value) {
-    const payment = paymentResult.value;
-    
-    if (payment.paymentMethod === 'onsite' && payment.status === 'pending') {
-      const completeResult = await activities.completePayment(booking.id);
-      
+  if (payment && payment.paymentMethod === 'onsite' && payment.status === 'pending') {
+    try {
+      await activities.completePayment(booking.id);
+    } catch (error) {
       // 支払い完了エラーは警告のみ（入場は成功させる）
-      if (completeResult.isErr()) {
-        log.warn('Payment completion failed', { 
-          bookingId: booking.id, 
-          error: completeResult.error 
-        });
-      }
+      log.warn('Payment completion failed', { 
+        bookingId: booking.id, 
+        error 
+      });
     }
   }
   
-  return updateResult.value;
+  return booking;
 }
+```
 ```
 
 **Workflowのメリット**:
@@ -413,8 +413,7 @@ export const processBookingActivity = (db: Database) =>
 // ✅ GOOD: Workflowで読み込み → 判断 → Activity呼び出し
 export async function processBookingWorkflow(bookingId: string) {
     // Workflowでデータを読む
-    const bookingResult = await activities.getBookingById(bookingId);
-    const booking = bookingResult._unsafeUnwrap();
+    const booking = await activities.getBookingById(bookingId);
     
     // Workflowで判断
     if (booking.status === 'confirmed') {
@@ -423,8 +422,7 @@ export async function processBookingWorkflow(bookingId: string) {
     }
     
     // さらに別のデータを読む
-    const paymentResult = await activities.getPaymentByBookingId(bookingId);
-    const payment = paymentResult._unsafeUnwrap();
+    const payment = await activities.getPaymentByBookingId(bookingId);
     
     // また判断
     if (payment.status === 'pending') {
@@ -436,26 +434,29 @@ export async function processBookingWorkflow(bookingId: string) {
 #### ✅ OK: 読み取り専用トランザクションの活用
 
 ```typescript
-export const getEventWithBookings = (db: Database) => (eventId: string) => {
-  return ResultAsync.fromPromise(
-    db.transaction(async (tx) => {
-      const event = await tx.select().from(events).where(eq(events.id, eventId)).limit(1);
-      if (event.length === 0) return null;
-      
-      const bookings = await tx.select().from(bookings).where(eq(bookings.eventId, eventId));
-      
-      return {
-        ...event[0],
-        bookings,
-      };
-    }, { accessMode: 'read only' }), // PostgreSQLの読み取り専用トランザクション
-    (error) => ({ 
-      code: 'DATABASE_ERROR', 
-      message: 'Failed to fetch event with bookings', 
-      details: error 
-    })
-  );
-};
+export const getEventWithBookings = (db: Database) => 
+  async (eventId: string): Promise<EventWithBookings | null> => {
+    try {
+      return await db.transaction(async (tx) => {
+        const event = await tx.select().from(events).where(eq(events.id, eventId)).limit(1);
+        if (event.length === 0) return null;
+        
+        const bookings = await tx.select().from(bookings).where(eq(bookings.eventId, eventId));
+        
+        return {
+          ...event[0],
+          bookings,
+        };
+      }, { accessMode: 'read only' }); // PostgreSQLの読み取り専用トランザクション
+    } catch (error) {
+      throw createEventError({
+        type: EventErrorType.DATABASE_ERROR,
+        message: 'Failed to fetch event with bookings',
+        details: error,
+        nonRetryable: false,
+      });
+    }
+  };
 ```
 
 ## 6. マイグレーション設計
@@ -623,15 +624,10 @@ export const createBookingActivity = (db: Database) =>
 // Activity関数内でgetDatabase()を呼ぶ（グローバル状態依存）
 export async function createBookingActivity(
     data: BookingCreateInput
-): Promise<{ ok: true; value: Booking } | { ok: false; error: BookingError }> {
+): Promise<Booking> {
     const { getDatabase } = await import('../connection'); // ❌ 動的インポート
     const db = getDatabase(); // ❌ グローバル状態に依存
-    const result = await insertBooking(db)(data);
-    
-    if (result.isErr()) {
-        return { ok: false, error: result.error };
-    }
-    return { ok: true, value: result.value };
+    return await insertBooking(db)(data);
 }
 ```
 
@@ -675,13 +671,9 @@ const activities = proxyActivities<typeof bookingActivities & typeof paymentActi
 
 export async function createBookingWorkflow(data: BookingCreateInput) {
     // Activity関数を直接使用（依存注入済み）
-    const bookingResult = await activities.insertBooking(data);
-    
-    if (bookingResult.isErr()) {
-        throw new ApplicationFailure('Failed to create booking', bookingResult.error.code);
-    }
-    
-    return bookingResult.value;
+    // ApplicationFailure はそのまま throw される
+    const booking = await activities.insertBooking(data);
+    return booking;
 }
 ```
 

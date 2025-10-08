@@ -34,11 +34,9 @@ const { createUserActivity, deleteUserActivity } = proxyActivities<typeof activi
 });
 
 export async function createUserWorkflow(input: CreateUserInput): Promise<User> {
-  const result = await createUserActivity(input);
-  if (result.isErr()) {
-    throw new ApplicationFailure(result.error.message, result.error.code);
-  }
-  return result.value;
+  // ApplicationFailure はそのまま throw される
+  const user = await createUserActivity(input);
+  return user;
 }
 ```
 
@@ -49,21 +47,14 @@ export async function getUserWithDetails(userId: string): Promise<UserDetails> {
   const { fetchUserProfileActivity, fetchUserPreferencesActivity } = 
     await import('../activities');
 
-  const [profileResult, preferencesResult] = await Promise.all([
+  const [profile, preferences] = await Promise.all([
     fetchUserProfileActivity(userId),
     fetchUserPreferencesActivity(userId)
   ]);
 
-  if (profileResult.isErr()) {
-    throw new Error(`Failed to fetch profile: ${profileResult.error.message}`);
-  }
-  if (preferencesResult.isErr()) {
-    throw new Error(`Failed to fetch preferences: ${preferencesResult.error.message}`);
-  }
-
   return {
-    ...profileResult.value,
-    preferences: preferencesResult.value
+    ...profile,
+    preferences
   };
 }
 ```
@@ -77,20 +68,14 @@ export async function createUserWithCompensationWorkflow(input: CreateUserInput)
 
   try {
     // Step 1: Create in Auth0
-    const auth0Result = await createAuth0UserActivity(input);
-    if (auth0Result.isErr()) {
-      throw new ApplicationFailure('Failed to create Auth0 user', 'AUTH0_ERROR');
-    }
+    const auth0User = await createAuth0UserActivity(input);
     createdAuth0User = true;
 
     // Step 2: Create in DB
-    const dbResult = await createDbUserActivity({ ...input, auth0Id: auth0Result.value.id });
-    if (dbResult.isErr()) {
-      throw new ApplicationFailure('Failed to create DB user', 'DATABASE_ERROR');
-    }
-    createdUserId = dbResult.value.id;
+    const dbUser = await createDbUserActivity({ ...input, auth0Id: auth0User.id });
+    createdUserId = dbUser.id;
 
-    return dbResult.value;
+    return dbUser;
   } catch (error) {
     // Compensation actions
     if (createdUserId) {
