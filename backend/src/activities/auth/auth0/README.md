@@ -210,7 +210,7 @@ export const endUserRouter = router({
 **なぜ Actions Layer を経由するのか？**
 1. **実装の詳細を隠蔽**: tRPC は Auth0 の存在を知る必要がない
 2. **ログ出力の一元管理**: Actions Layer でログを出力
-3. **エラーハンドリングの統一**: Result型 → Error への変換を Actions で実施
+3. **エラーハンドリングの統一**: ApplicationFailure のハンドリングを Actions で実施
 4. **テスト容易性**: Actions をモックすれば tRPC のテストが簡単
 
 

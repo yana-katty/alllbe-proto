@@ -433,6 +433,7 @@ export async function createTestOrganization(id: string = 'test_org_123'): Promi
 import { describe, it, expect, vi } from 'vitest';
 import { createFeatureActivity } from './feature.activity';
 import type { Database } from '../db/connection';
+import { ApplicationFailure } from '@temporalio/common';
 
 describe('Feature Activities', () => {
     describe('createFeatureActivity', () => {
@@ -448,20 +449,13 @@ describe('Feature Activities', () => {
 
             const result = await createFeatureActivity({ name: 'Test' });
 
-            expect(result.ok).toBe(true);
-            if (result.ok) {
-                expect(result.value.name).toBe('Test');
-            }
+            expect(result.name).toBe('Test');
         });
 
-        it('should return error when database fails', async () => {
+        it('should throw error when database fails', async () => {
             // エラーをシミュレート
-            const result = await createFeatureActivity({ name: '' });
-
-            expect(result.ok).toBe(false);
-            if (!result.ok) {
-                expect(result.error.code).toBe('INVALID');
-            }
+            await expect(createFeatureActivity({ name: '' }))
+                .rejects.toThrow(ApplicationFailure);
         });
     });
 });
@@ -493,38 +487,27 @@ describe('Feature Domain Logic', () => {
     describe('createFeature', () => {
         it('should create feature when input is valid', async () => {
             const mockDeps: Pick<FeatureActionDeps, 'insertFeature' | 'findFeatureByName'> = {
-                insertFeature: vi.fn().mockResolvedValue({
-                    ok: true,
-                    value: { id: 'test-id', name: 'Test' }
-                }),
-                findFeatureByName: vi.fn().mockResolvedValue({
-                    ok: true,
-                    value: null // 重複なし
-                }),
+                insertFeature: vi.fn().mockResolvedValue({ id: 'test-id', name: 'Test' }),
+                findFeatureByName: vi.fn().mockResolvedValue(null), // 重複なし
             };
 
             const logic = createFeature(mockDeps);
             const result = await logic({ name: 'Test' });
 
-            expect(result.isOk()).toBe(true);
-            expect(result._unsafeUnwrap().data.name).toBe('Test');
+            expect(result.name).toBe('Test');
             expect(mockDeps.findFeatureByName).toHaveBeenCalledWith('Test');
         });
 
-        it('should return error when feature already exists', async () => {
+        it('should throw error when feature already exists', async () => {
             const mockDeps: Pick<FeatureActionDeps, 'insertFeature' | 'findFeatureByName'> = {
                 insertFeature: vi.fn(),
-                findFeatureByName: vi.fn().mockResolvedValue({
-                    ok: true,
-                    value: { id: 'existing-id', name: 'Test' } // 既存データ
-                }),
+                findFeatureByName: vi.fn().mockResolvedValue({ id: 'existing-id', name: 'Test' }), // 既存データ
             };
 
             const logic = createFeature(mockDeps);
-            const result = await logic({ name: 'Test' });
 
-            expect(result.isErr()).toBe(true);
-            expect(result._unsafeUnwrapErr().code).toBe('ALREADY_EXISTS');
+            await expect(logic({ name: 'Test' }))
+                .rejects.toThrow(ApplicationFailure);
             expect(mockDeps.insertFeature).not.toHaveBeenCalled();
         });
     });
@@ -534,7 +517,7 @@ describe('Feature Domain Logic', () => {
 ### Domain ロジックテストのベストプラクティス
 
 1. **Pick<>で依存を最小化**: 必要な関数のみモック
-2. **Result 型の厳密な検証**: `result.isOk()` / `result.isErr()` でアサーション
+2. **ApplicationFailure の検証**: error.type でエラー種別を確認
 3. **関数呼び出しの検証**: `toHaveBeenCalledWith()` で引数を確認
 4. **エラーパスの網羅**: すべてのエラーケースをテスト
 
@@ -666,6 +649,6 @@ describe('featureRouter - Smoke Tests', () => {
 
 - [Temporal Testing Documentation](https://docs.temporal.io/develop/typescript/testing-suite)
 - [Vitest Documentation](https://vitest.dev/)
-- [neverthrow Documentation](https://github.com/supermacro/neverthrow)
+- [Temporal ApplicationFailure Documentation](https://typescript.temporal.io/api/classes/common.ApplicationFailure)
 
-このガイドラインに従って、保守性が高く、信頼できるテストを作成してください。
+このガイドラインに従って、保守性が高く、信頼できるテストを作成してください.

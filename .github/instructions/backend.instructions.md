@@ -428,22 +428,37 @@ function mapTemporalErrorToTRPC(type: string): TRPC_ERROR_CODE_KEY {
 ### エラーハンドリング
 
 ```typescript
-// ✅ Activity: Result型で返す
+// ✅ Activity: ApplicationFailure を throw
 export const createUserActivity = (db: Database) => 
-  (input: CreateUserInput): ResultAsync<User, UserError> => {
-    return ResultAsync.fromPromise(
-      db.insert(users).values(input).returning(),
-      (error) => ({ code: 'DATABASE_ERROR', message: 'Failed', details: error })
-    );
+  async (input: CreateUserInput): Promise<User> => {
+    try {
+      const result = await db.insert(users).values(input).returning();
+      if (!result[0]) {
+        throw createUserError({
+          type: UserErrorType.DATABASE_ERROR,
+          message: 'Failed to create user',
+          nonRetryable: false,
+        });
+      }
+      return result[0];
+    } catch (error) {
+      if (error instanceof ApplicationFailure) {
+        throw error;
+      }
+      throw createUserError({
+        type: UserErrorType.DATABASE_ERROR,
+        message: 'Failed to create user',
+        details: error,
+        nonRetryable: false,
+      });
+    }
   };
 
-// ✅ Workflow: Errorをthrow
+// ✅ Workflow: ApplicationFailure はそのまま伝播
 export async function createUserWorkflow(input: CreateUserInput): Promise<User> {
-  const result = await createUserActivity(input);
-  if (result.isErr()) {
-    throw new ApplicationFailure(result.error.message, result.error.code);
-  }
-  return result.value;
+  // ApplicationFailure がそのまま throw される
+  const user = await createUserActivity(input);
+  return user;
 }
 
 // ✅ tRPC: Workflowを呼び出し
@@ -472,21 +487,22 @@ export const userRouter = router({
 ### 単体テスト
 - **純粋関数を重点テスト**: ドメインロジック関数
 - **依存の最小化**: `Pick<>` で必要な関数のみモック
-- **Result型の検証**: `isOk()` / `isErr()` + `_unsafeUnwrap()` / `_unsafeUnwrapErr()`
+- **ApplicationFailure の検証**: error.type でエラー種別を確認
 - **エラーパスの網羅**: 正常系・異常系を包括的にテスト
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { createOrganization } from '@/domain/organization';
+import { ApplicationFailure } from '@temporalio/common';
 
 describe('createOrganization', () => {
   it('should create organization when email is unique', async () => {
     const mockDeps = {
-      insertOrganization: vi.fn().mockResolvedValue(ok(mockEntity)),
-      findOrganizationByEmail: vi.fn().mockResolvedValue(ok(null)),
+      insertOrganization: vi.fn().mockResolvedValue(mockEntity),
+      findOrganizationByEmail: vi.fn().mockResolvedValue(null),
     };
     const result = await createOrganization(mockDeps)(input);
-    expect(result.isOk()).toBe(true);
+    expect(result.id).toBe(mockEntity.id);
   });
 });
 ```

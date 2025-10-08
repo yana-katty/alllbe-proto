@@ -137,11 +137,17 @@ Experiences
 ✅ **GOOD - 単一のAPI呼び出し**:
 ```typescript
 export const createWorkosOrganization = (client: WorkOS) =>
-    (input: { name: string; domains: string[] }) => {
-        return ResultAsync.fromPromise(
-            client.organizations.createOrganization({ ... }),
-            mapWorkosError
-        );
+    async (input: { name: string; domains: string[] }): Promise<WorkosOrganization> => {
+        try {
+            return await client.organizations.createOrganization({ ... });
+        } catch (error) {
+            throw createWorkosError({
+                type: WorkosErrorType.API_ERROR,
+                message: 'Failed to create organization',
+                details: error,
+                nonRetryable: false,
+            });
+        }
     };
 ```
 
