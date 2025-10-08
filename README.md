@@ -45,8 +45,8 @@ alllbe-proto/
 - Temporal (ワークフローエンジン)
 - Drizzle ORM
 - Neon Database (PostgreSQL)
-- neverthrow (Result型)
 - vitest (テスト)
+- ApplicationFailure (エラーハンドリング)
 
 ### Frontend
 - Next.js 14 (App Router)

@@ -219,24 +219,27 @@ NODE_ENV=production
 
 ```typescript
 import { log } from '@temporalio/activity';
-import { ResultAsync } from 'neverthrow';
+import { ApplicationFailure } from '@temporalio/common';
 
-export const processPaymentActivity = async (input: PaymentInput) => {
+export const processPaymentActivity = async (input: PaymentInput): Promise<PaymentResult> => {
   log.info('Processing payment', { 
     amount: input.amount, 
     currency: input.currency 
   });
   
-  return ResultAsync.fromPromise(
-    paymentAPI.charge(input),
-    (error) => {
-      log.error('Payment failed', { error, input });
-      return { code: 'PAYMENT_ERROR', message: 'Charge failed', details: error };
-    }
-  ).map((result) => {
+  try {
+    const result = await paymentAPI.charge(input);
     log.info('Payment processed successfully', { transactionId: result.id });
     return result;
-  });
+  } catch (error) {
+    log.error('Payment failed', { error, input });
+    throw createPaymentError({
+      type: PaymentErrorType.CHARGE_FAILED,
+      message: 'Charge failed',
+      details: error,
+      nonRetryable: false,
+    });
+  }
 };
 ```
 
@@ -244,42 +247,38 @@ export const processPaymentActivity = async (input: PaymentInput) => {
 
 ```typescript
 import { log } from '@temporalio/workflow';
-import { proxyActivities } from '@temporalio/workflow';
+import { proxyActivities, ApplicationFailure } from '@temporalio/workflow';
 
 export async function bookExperienceWorkflow(input: BookingInput) {
   log.info('Booking workflow started', { experienceId: input.experienceId });
   
-  // Step 1: 予約作成
-  log.debug('Creating booking record');
-  const booking = await activities.createBookingActivity(input);
-  
-  if (booking.isErr()) {
-    log.error('Booking creation failed', { error: booking.error });
-    throw new ApplicationFailure('Booking failed', 'BOOKING_ERROR');
-  }
-  
-  // Step 2: 決済処理
-  log.debug('Processing payment', { bookingId: booking.value.id });
-  const payment = await activities.processPaymentActivity({
-    bookingId: booking.value.id,
-    amount: input.amount,
-  });
-  
-  if (payment.isErr()) {
-    log.warn('Payment failed, rolling back booking', { 
-      bookingId: booking.value.id,
-      error: payment.error 
+  try {
+    // Step 1: 予約作成
+    log.debug('Creating booking record');
+    const booking = await activities.createBookingActivity(input);
+    
+    // Step 2: 決済処理
+    log.debug('Processing payment', { bookingId: booking.id });
+    const payment = await activities.processPaymentActivity({
+      bookingId: booking.id,
+      amount: input.amount,
     });
-    await activities.cancelBookingActivity(booking.value.id);
-    throw new ApplicationFailure('Payment failed', 'PAYMENT_ERROR');
+    
+    log.info('Booking completed successfully', { 
+      bookingId: booking.id,
+      paymentId: payment.id 
+    });
+    
+    return { booking, payment };
+  } catch (error) {
+    if (error instanceof ApplicationFailure) {
+      log.error('Booking workflow failed', { 
+        type: error.type,
+        message: error.message 
+      });
+    }
+    throw error;
   }
-  
-  log.info('Booking completed successfully', { 
-    bookingId: booking.value.id,
-    paymentId: payment.value.id 
-  });
-  
-  return { booking: booking.value, payment: payment.value };
 }
 ```
 

@@ -27,13 +27,13 @@ Temporal Activities
 - **Activity**: データベース操作・外部API呼び出しなど具体的な処理を実行
 
 #### Activity実装の原則
-- **必ずNeverthrowを使用**してError処理を行う
-- **Errorをthrowしない**（ResultAsync<T, E>で返す）
+- **ApplicationFailure を使用**してError処理を行う
+- **try-catch でエラーを捕捉**し、ApplicationFailure を throw する
 - `backend/src/activities/db/models/*.ts`に実装
 - 単一責任の原則に従い、1つのActivityは1つの具体的な操作のみ行う
 
 #### Workflow実装の原則
-- **Errorをthrowして良い**（Temporal標準に従う）
+- **ApplicationFailure を throw**（Temporal標準に従う）
 - C/U/D操作は必ずWorkflow経由で実行
 - Read操作は通常の関数として実装し、tRPCから直接呼び出し可能
 - SAGAパターンで補償処理を実装
@@ -41,22 +41,37 @@ Temporal Activities
 ### 2. エラーハンドリング戦略
 
 ```typescript
-// Activity (Neverthrow)
+// Activity (ApplicationFailure)
 export const createUserActivity = (db: Database) => 
-  (input: CreateUserInput): ResultAsync<User, UserError> => {
-    return ResultAsync.fromPromise(
-      db.insert(users).values(input).returning(),
-      (error) => ({ code: 'DATABASE_ERROR', message: 'Failed to create user', details: error })
-    );
+  async (input: CreateUserInput): Promise<User> => {
+    try {
+      const result = await db.insert(users).values(input).returning();
+      if (!result[0]) {
+        throw createUserError({
+          type: UserErrorType.DATABASE_ERROR,
+          message: 'Failed to create user: no rows returned',
+          nonRetryable: false,
+        });
+      }
+      return result[0];
+    } catch (error) {
+      if (error instanceof ApplicationFailure) {
+        throw error;
+      }
+      throw createUserError({
+        type: UserErrorType.DATABASE_ERROR,
+        message: 'Failed to create user',
+        details: error,
+        nonRetryable: false,
+      });
+    }
   };
 
-// Workflow (throw Error)
+// Workflow (ApplicationFailure を throw)
 export async function createUserWorkflow(input: CreateUserInput): Promise<User> {
-  const result = await activities.createUserActivity(input);
-  if (result.isErr()) {
-    throw new ApplicationFailure(result.error.message, result.error.code);
-  }
-  return result.value;
+  // Activity から ApplicationFailure がそのまま throw される
+  const user = await activities.createUserActivity(input);
+  return user;
 }
 ```
 
@@ -81,9 +96,9 @@ export async function createUserWorkflow(input: CreateUserInput): Promise<User> 
 - 不要な機能の実装
 
 #### 推奨しない実装
-- ActivityからErrorをthrow
-- WorkflowでのNeverthrow使用
+- 過度な抽象化レイヤーの追加
 - tRPCからActivityの直接呼び出し（Read操作除く）
+- エラー情報の不足（詳細なコンテキストを含めること）
 
 ## ファイル構造
 
@@ -197,7 +212,7 @@ export const userRouter = router({
 
 - [Temporal TypeScript Samples](https://github.com/temporalio/samples-typescript/tree/main)
 - [SAGA Pattern Example](https://github.com/temporalio/samples-typescript/tree/main/saga)
-- [Neverthrow Documentation](https://github.com/supermacro/neverthrow)
+- [Temporal ApplicationFailure Documentation](https://typescript.temporal.io/api/classes/common.ApplicationFailure)
 - [Temporal Observability](https://docs.temporal.io/develop/typescript/observability)
 - [Logger 戦略の詳細](./logger.instructions.md)
 

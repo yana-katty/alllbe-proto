@@ -666,6 +666,6 @@ describe('featureRouter - Smoke Tests', () => {
 
 - [Temporal Testing Documentation](https://docs.temporal.io/develop/typescript/testing-suite)
 - [Vitest Documentation](https://vitest.dev/)
-- [neverthrow Documentation](https://github.com/supermacro/neverthrow)
+- [Temporal ApplicationFailure Documentation](https://typescript.temporal.io/api/classes/common.ApplicationFailure)
 
-このガイドラインに従って、保守性が高く、信頼できるテストを作成してください。
+このガイドラインに従って、保守性が高く、信頼できるテストを作成してください.

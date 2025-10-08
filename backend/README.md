@@ -54,10 +54,11 @@ backend/
 
 ## 主要な設計原則
 
-1. **Activity層**: Neverthrow使用、Errorをthrowしない
-2. **Workflow層**: Errorをthrow可能（Temporal標準）
+1. **Activity層**: ApplicationFailure を throw（try-catchベース）
+2. **Workflow層**: ApplicationFailure を throw（Temporal標準）
 3. **tRPC層**: Read操作は通常関数、CUD操作はWorkflow Client経由
 4. **重複制御**: Workflow Id Reuse Policy: Duplicate で client側管理
+5. **エラーハンドリング**: ErrorType enum + createXXXError() ファクトリ関数パターン
 
 **詳細**: `.github/instructions/` 配下の各instructionsファイルを参照
 
@@ -134,4 +135,4 @@ WORKOS_API_KEY=xxx
 
 - [Temporal TypeScript Samples](https://github.com/temporalio/samples-typescript/tree/main)
 - [SAGA Pattern Example](https://github.com/temporalio/samples-typescript/tree/main/saga)
-- [Neverthrow Documentation](https://github.com/supermacro/neverthrow)
+- [Temporal ApplicationFailure Documentation](https://typescript.temporal.io/api/classes/common.ApplicationFailure)

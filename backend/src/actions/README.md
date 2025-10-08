@@ -7,7 +7,7 @@ tRPC Handler と Activity Layer の間の抽象化層
 Actions Layer は以下の役割を担います：
 
 1. **実装の詳細を隠蔽**: tRPC は Auth0/WorkOS などの外部サービスの存在を知る必要がない
-2. **エラーハンドリングの統一**: Activity の `ResultAsync<T, E>` を通常の `Error` に変換
+2. **エラーハンドリングの統一**: Activity の ApplicationFailure を適切にハンドリング
 3. **ログ出力の一元管理**: Actions Layer で統一的なログ出力
 4. **テスト容易性**: Actions をモックすれば tRPC のテストが容易
 
@@ -25,7 +25,7 @@ Actions Layer は以下の役割を担います：
 ┌─────────────────────────────────────────────────────────────┐
 │                    Actions Layer                             │
 │  ・実装の詳細を隠蔽（Auth0, WorkOS等）                        │
-│  ・ResultAsync<T, E> → Error への変換                        │
+│  ・ApplicationFailure のハンドリング                         │
 │  ・ログ出力                                                  │
 └────────────────────┬────────────────────────────────────────┘
                      │
@@ -33,7 +33,7 @@ Actions Layer は以下の役割を担います：
 ┌─────────────────────────────────────────────────────────────┐
 │                    Activity Layer                            │
 │  ・外部API呼び出し（Auth0, WorkOS, DB等）                    │
-│  ・ResultAsync<T, E> で統一的なエラーハンドリング            │
+│  ・ApplicationFailure で統一的なエラーハンドリング            │
 │  ・依存注入パターン                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -45,8 +45,8 @@ Actions Layer は以下の役割を担います：
 ```typescript
 // endUser.ts
 
-// Activity関数の型定義
-type GetAuth0UserActivity = (userId: string) => ResultAsync<Auth0UserProfile, Auth0Error>;
+// Activity関数の型定義（ApplicationFailureベース）
+type GetAuth0UserActivity = (userId: string) => Promise<Auth0UserProfile>;
 
 // 依存関数の型定義
 interface EndUserActionDeps {
@@ -56,13 +56,8 @@ interface EndUserActionDeps {
 // Pick<> で必要な依存のみ受け取る
 export const getEndUserById = (deps: Pick<EndUserActionDeps, 'getAuth0UserActivity'>) =>
     async (userId: string): Promise<Auth0UserProfile> => {
-        const result = await deps.getAuth0UserActivity(userId);
-        
-        if (result.isErr()) {
-            throw new Error(`Failed to get end user: ${result.error.message}`);
-        }
-        
-        return result.value;
+        // ApplicationFailure はそのまま throw される
+        return await deps.getAuth0UserActivity(userId);
     };
 ```
 
@@ -136,22 +131,22 @@ Actions Layer では `@temporalio/activity` の `log` を使用：
 
 ```typescript
 import { log } from '@temporalio/activity';
+import { ApplicationFailure } from '@temporalio/common';
 
 export const getEndUserById = (deps: Pick<EndUserActionDeps, 'getAuth0UserActivity'>) =>
     async (userId: string): Promise<Auth0UserProfile> => {
         log.info('Getting end user by ID', { userId });
         
-        const result = await deps.getAuth0UserActivity(userId);
-
-        if (result.isErr()) {
-            const error = result._unsafeUnwrapErr();
-            log.error('Failed to get end user', { userId, error });
-            throw new Error(`Failed to get end user: ${error.message}`);
+        try {
+            const user = await deps.getAuth0UserActivity(userId);
+            log.info('End user retrieved successfully', { userId, email: user.email });
+            return user;
+        } catch (error) {
+            if (error instanceof ApplicationFailure) {
+                log.error('Failed to get end user', { userId, error: error.message, type: error.type });
+            }
+            throw error;
         }
-
-        const user = result._unsafeUnwrap();
-        log.info('End user retrieved successfully', { userId, email: user.email });
-        return user;
     };
 ```
 
@@ -162,14 +157,14 @@ export const getEndUserById = (deps: Pick<EndUserActionDeps, 'getAuth0UserActivi
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { getEndUserById } from '@/actions/endUser';
-import { ok, err } from 'neverthrow';
+import { ApplicationFailure } from '@temporalio/common';
 
 describe('getEndUserById', () => {
     it('should return user when activity succeeds', async () => {
-        const mockActivity = vi.fn().mockResolvedValue(ok({ 
+        const mockActivity = vi.fn().mockResolvedValue({ 
             user_id: 'auth0|123',
             email: 'test@example.com'
-        }));
+        });
         
         const action = getEndUserById({ getAuth0UserActivity: mockActivity });
         const result = await action('auth0|123');
@@ -179,14 +174,17 @@ describe('getEndUserById', () => {
     });
     
     it('should throw error when activity fails', async () => {
-        const mockActivity = vi.fn().mockResolvedValue(err({ 
-            code: 'USER_NOT_FOUND',
-            message: 'User not found'
-        }));
+        const mockActivity = vi.fn().mockRejectedValue(
+            ApplicationFailure.create({
+                message: 'User not found',
+                type: 'AUTH0_USER_NOT_FOUND',
+                nonRetryable: true,
+            })
+        );
         
         const action = getEndUserById({ getAuth0UserActivity: mockActivity });
         
-        await expect(action('auth0|123')).rejects.toThrow('Failed to get end user');
+        await expect(action('auth0|123')).rejects.toThrow('User not found');
     });
 });
 ```
